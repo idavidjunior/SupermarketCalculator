@@ -32,4 +32,8 @@
     <color name="numpadBgRounded">#E0E0E0</color>
     <color name="highlightBg">#C8E6C9</color>
     <color name="paidHighlight">#E8F5E9</color>
+    <color name="darkRowEven">#1A1A1A</color>
+    <color name="darkRowOdd">#2A2A2A</color>
+    <color name="darkHighlightBg">#1B5E20</color>
+    <color name="darkPaidHighlight">#1A3A1A</color>
 </resources>

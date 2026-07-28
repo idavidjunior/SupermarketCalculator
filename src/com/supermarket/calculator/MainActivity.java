@@ -99,12 +99,14 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private static final int THEME_DEFAULT = 0;
     private static final int THEME_DARK = 1;
     private static final int THEME_BLUE = 2;
+    private static final String KEY_VIBRATION = "vibration";
     private static final int SKIN_DEFAULT = 0;
     private static final int SKIN_ROUNDED = 1;
 
     private int currentTheme = THEME_DEFAULT;
     private int currentSkin = SKIN_DEFAULT;
     private boolean showOps = false, showBack = true, showClear = true, show00 = true;
+    private boolean vibrationEnabled = true;
 
     private LinearLayout opsRow;
     private double operand1 = 0;
@@ -262,6 +264,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         showBack = prefs.getBoolean(KEY_SHOW_BACK, true);
         showClear = prefs.getBoolean(KEY_SHOW_CLEAR, true);
         show00 = prefs.getBoolean(KEY_SHOW_00, true);
+        vibrationEnabled = prefs.getBoolean(KEY_VIBRATION, true);
     }
 
     private void saveSettings() {
@@ -272,6 +275,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             .putBoolean(KEY_SHOW_BACK, showBack)
             .putBoolean(KEY_SHOW_CLEAR, showClear)
             .putBoolean(KEY_SHOW_00, show00)
+            .putBoolean(KEY_VIBRATION, vibrationEnabled)
             .apply();
     }
 
@@ -699,7 +703,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private void vibrateStrong() {
-        if (vibrator == null || !vibrator.hasVibrator()) return;
+        if (vibrator == null || !vibrator.hasVibrator() || !vibrationEnabled) return;
         long[] pattern = {0, 400, 100, 400};
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1));
@@ -916,7 +920,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         receiptView.setText(receiptContent);
         receiptView.setTextSize(12f);
         receiptView.setTypeface(android.graphics.Typeface.MONOSPACE);
-        receiptView.setTextColor(getResources().getColor(R.color.textPrimary));
+        receiptView.setTextColor(themeColor(R.color.textPrimary, R.color.darkTextPrimary));
         receiptScroll.addView(receiptView);
 
         LinearLayout btnRow = new LinearLayout(this);
@@ -1174,8 +1178,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                     loadBtn.setVisibility(View.GONE);
                     shareBtn.setVisibility(View.GONE);
                     deleteBtn.setVisibility(View.GONE);
-                    nameTv.setTextColor(getResources().getColor(R.color.textPrimary));
-                    v.setBackgroundColor(isSelected ? getResources().getColor(R.color.bluePrimary) : 0);
+                    nameTv.setTextColor(themeColor(R.color.textPrimary, R.color.darkTextPrimary));
+                    v.setBackgroundColor(isSelected ? getResources().getColor(R.color.primary) : 0);
                     if (isSelected) nameTv.setTextColor(getResources().getColor(R.color.white));
                 } else {
                     checkBox.setVisibility(View.GONE);
@@ -1183,8 +1187,9 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                     shareBtn.setVisibility(View.VISIBLE);
                     deleteBtn.setVisibility(View.VISIBLE);
                     v.setBackgroundColor(0);
-                    nameTv.setTextColor(getResources().getColor(R.color.textPrimary));
+                    nameTv.setTextColor(themeColor(R.color.textPrimary, R.color.darkTextPrimary));
                 }
+                dateTv.setTextColor(themeColor(R.color.textSecondary, R.color.darkTextSecondary));
 
                 v.setOnClickListener(view -> {
                     if (marketSelectionMode) {
@@ -1244,6 +1249,9 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 nameTv.setText(title != null ? title : fileName);
                 long lastMod = f.lastModified();
                 dateTv.setText(new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(new Date(lastMod)));
+
+                nameTv.setTextColor(themeColor(R.color.textPrimary, R.color.darkTextPrimary));
+                dateTv.setTextColor(themeColor(R.color.textSecondary, R.color.darkTextSecondary));
 
                 checkBox.setVisibility(View.VISIBLE);
                 checkBox.setClickable(true);
@@ -1626,12 +1634,12 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 if (e.paid) {
                     paidStatus.setVisibility(View.VISIBLE);
                     paidStatus.setText("Pago");
-                    paidStatus.setTextColor(Color.parseColor("#2E7D32"));
+                    paidStatus.setTextColor(themeColor(R.color.budgetPositive, R.color.budgetPositive));
                     paidStatus.setBackgroundResource(R.drawable.bg_pago_badge);
                 } else {
                     paidStatus.setVisibility(View.VISIBLE);
                     paidStatus.setText("Pendente");
-                    paidStatus.setTextColor(Color.parseColor("#E65100"));
+                    paidStatus.setTextColor(themeColor(R.color.finishBtn, R.color.finishBtn));
                     paidStatus.setBackgroundResource(R.drawable.bg_pendente_badge);
                 }
 
@@ -1652,32 +1660,21 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                     nameEt.setCursorVisible(true);
                     nameEt.setBackgroundResource(R.drawable.bg_input);
                     nameEt.setPadding(4, 0, 4, 0);
-                    nameEt.setTextColor(getResources().getColor(R.color.textPrimary));
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        v.setBackgroundColor(getColor(R.color.highlightBg));
-                    } else {
-                        v.setBackgroundColor(getResources().getColor(R.color.highlightBg));
-                    }
+                    nameEt.setTextColor(themeColor(R.color.textPrimary, R.color.darkTextPrimary));
+                    v.setBackgroundColor(themeColor(R.color.highlightBg, R.color.darkHighlightBg));
                 } else {
                     nameEt.setFocusable(false);
                     nameEt.setFocusableInTouchMode(false);
                     nameEt.setCursorVisible(false);
                     nameEt.setBackgroundResource(0);
                     nameEt.setPadding(0, 0, 0, 0);
-                    nameEt.setTextColor(getResources().getColor(R.color.textPrimary));
+                    nameEt.setTextColor(themeColor(R.color.textPrimary, R.color.darkTextPrimary));
                     if (e.paid) {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            v.setBackgroundColor(getColor(R.color.paidHighlight));
-                        } else {
-                            v.setBackgroundColor(getResources().getColor(R.color.paidHighlight));
-                        }
+                        v.setBackgroundColor(themeColor(R.color.paidHighlight, R.color.darkPaidHighlight));
                     } else {
                         int colorRes = i % 2 == 0 ? R.color.rowEven : R.color.rowOdd;
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            v.setBackgroundColor(getColor(colorRes));
-                        } else {
-                            v.setBackgroundColor(getResources().getColor(colorRes));
-                        }
+                        int darkColorRes = i % 2 == 0 ? R.color.darkRowEven : R.color.darkRowOdd;
+                        v.setBackgroundColor(themeColor(colorRes, darkColorRes));
                     }
                 }
 
@@ -1702,8 +1699,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 nameEt.setTag(watcher);
 
                 unitTv.setText(e.category);
-                unitTv.setTextColor(getResources().getColor(R.color.textSecondary));
-                totalTv.setTextColor(getResources().getColor(R.color.totalColor));
+                unitTv.setTextColor(themeColor(R.color.textSecondary, R.color.darkTextSecondary));
+                totalTv.setTextColor(themeColor(R.color.totalColor, R.color.darkTextPrimary));
                 unitTv.setTextSize(11f);
                 totalTv.setText(currencyFormat.format(e.amount));
 
@@ -1775,12 +1772,13 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                         public View getView(int position, View convertView, ViewGroup parent) {
                             View view = super.getView(position, convertView, parent);
                             TextView tv = (TextView) view.findViewById(android.R.id.text1);
-                            if (selected.contains(expenseCategories[position])) {
-                                view.setBackgroundColor(0xFFDDDDDD);
+                            boolean sel = selected.contains(expenseCategories[position]);
+                            if (isDarkTheme()) {
+                                view.setBackgroundColor(sel ? 0xFF444444 : 0xFF222222);
                             } else {
-                                view.setBackgroundColor(Color.WHITE);
+                                view.setBackgroundColor(sel ? 0xFFDDDDDD : Color.WHITE);
                             }
-                            tv.setTextColor(Color.BLACK);
+                            tv.setTextColor(isDarkTheme() ? Color.WHITE : Color.BLACK);
                             return view;
                         }
                     };
@@ -1901,15 +1899,15 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 TextView tv = (TextView) view.findViewById(android.R.id.text1);
                 String item = displayList.get(position);
                 if (item.equals(ADD_NEW)) {
-                    view.setBackgroundColor(0xFFE8F5E9);
-                    tv.setTextColor(0xFF1B5E20);
+                    view.setBackgroundColor(isDarkTheme() ? 0xFF1B5E20 : 0xFFE8F5E9);
+                    tv.setTextColor(isDarkTheme() ? Color.WHITE : 0xFF1B5E20);
                     tv.setTextSize(14);
                 } else if (selectedItems.contains(item)) {
-                    view.setBackgroundColor(0xFFDDDDDD);
-                    tv.setTextColor(Color.BLACK);
+                    view.setBackgroundColor(isDarkTheme() ? 0xFF444444 : 0xFFDDDDDD);
+                    tv.setTextColor(isDarkTheme() ? Color.WHITE : Color.BLACK);
                 } else {
-                    view.setBackgroundColor(Color.WHITE);
-                    tv.setTextColor(Color.BLACK);
+                    view.setBackgroundColor(isDarkTheme() ? 0xFF222222 : Color.WHITE);
+                    tv.setTextColor(isDarkTheme() ? Color.WHITE : Color.BLACK);
                 }
                 return view;
             }
@@ -2165,8 +2163,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         expMarketContent.setVisibility(index == 0 ? View.VISIBLE : View.GONE);
         expFinanceFilesContent.setVisibility(index == 1 ? View.VISIBLE : View.GONE);
 
-        int activeColor = getResources().getColor(R.color.headerText);
-        int inactiveColor = getResources().getColor(R.color.textSecondary);
+        int activeColor = themeColor(R.color.headerText, R.color.darkTextPrimary);
+        int inactiveColor = themeColor(R.color.textSecondary, R.color.darkTextSecondary);
         expTabMarket.setTextColor(index == 0 ? activeColor : inactiveColor);
         expTabMarket.setBackgroundResource(index == 0 ? R.drawable.bg_tab_active : 0);
         expTabFinance.setTextColor(index == 1 ? activeColor : inactiveColor);
@@ -2382,9 +2380,10 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         CheckBox chkShowBack = findViewById(R.id.chkShowBack);
         CheckBox chkShowClear = findViewById(R.id.chkShowClear);
         CheckBox chkShow00 = findViewById(R.id.chkShow00);
+        CheckBox chkVibration = findViewById(R.id.chkVibration);
+        Button btnReset = findViewById(R.id.btnResetData);
 
-        int themeId = currentTheme == THEME_DARK ? R.id.themeDark
-            : currentTheme == THEME_BLUE ? R.id.themeBlue : R.id.themeDefault;
+        int themeId = currentTheme == THEME_DARK ? R.id.themeDark : currentTheme == THEME_BLUE ? R.id.themeBlue : R.id.themeDefault;
         themeGroup.check(themeId);
 
         int skinId = currentSkin == SKIN_ROUNDED ? R.id.skinRounded : R.id.skinDefault;
@@ -2394,6 +2393,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         chkShowBack.setChecked(showBack);
         chkShowClear.setChecked(showClear);
         chkShow00.setChecked(show00);
+        chkVibration.setChecked(vibrationEnabled);
 
         themeGroup.setOnCheckedChangeListener((g, id) -> {
             if (id == R.id.themeDefault) currentTheme = THEME_DEFAULT;
@@ -2432,49 +2432,228 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             saveSettings();
             applyNumpadCustomization();
         });
+
+        chkVibration.setOnCheckedChangeListener((b, checked) -> {
+            vibrationEnabled = checked;
+            saveSettings();
+        });
+
+        btnReset.setOnClickListener(v -> {
+            new AlertDialog.Builder(this)
+                .setTitle("Resetar todos os dados")
+                .setMessage("Tem certeza? Todas as listas, despesas, configs e itens personalizados serão perdidos.")
+                .setPositiveButton("Resetar", (d, w) -> resetAllData())
+                .setNegativeButton("Cancelar", null)
+                .show();
+        });
+    }
+
+    private void resetAllData() {
+        // Clear shared prefs
+        prefs.edit().clear().apply();
+        getSharedPreferences("supermarket_prefs", MODE_PRIVATE).edit().clear().apply();
+
+        // Delete saved files
+        File dir = getListasDir();
+        if (dir.exists()) {
+            for (File f : dir.listFiles()) f.delete();
+        }
+
+        // Clear in-memory state
+        items.clear();
+        expenseItems.clear();
+        customCategories.clear();
+        allGroceryItems.clear();
+        currentQty = 1;
+        priceBuffer = new StringBuilder();
+        editingIndex = -1;
+        budgetLimit = 0;
+        financeBudgetLimit = 0;
+        editingExpensePosition = -1;
+        currentExpenseFile = null;
+        paidFiles.clear();
+
+        // Reset settings to defaults
+        loadSettings();
+        applyTheme();
+        applySkin();
+        applyNumpadCustomization();
+        rebuildGroceryAdapter();
+        adapter.notifyDataSetChanged();
+        expenseAdapter.notifyDataSetChanged();
+        refreshSavedLists();
+        refreshExpensesMarket();
+        refreshFinanceFiles();
+        updateTotal();
+        updatePriceDisplay();
+
+        Toast.makeText(this, "Todos os dados foram resetados.", Toast.LENGTH_LONG).show();
     }
 
     // ==================== THEME / SKIN ====================
 
+    private boolean isDarkTheme() {
+        return currentTheme == THEME_DARK;
+    }
+
     private int getColorForCurrentTheme(boolean isText) {
-        if (currentTheme == THEME_DARK) {
+        if (isDarkTheme()) {
             return isText ? getResources().getColor(R.color.darkTextPrimary) : getResources().getColor(R.color.budgetPositive);
         }
         return isText ? getResources().getColor(R.color.textPrimary) : getResources().getColor(R.color.budgetPositive);
     }
 
+    private int themeColor(int lightRes, int darkRes) {
+        return getResources().getColor(isDarkTheme() ? darkRes : lightRes);
+    }
+
     private void applyTheme() {
-        switch (currentTheme) {
-            case THEME_DARK:
-                rootLayout.setBackgroundColor(getResources().getColor(R.color.darkBg));
-                headerBar.setBackgroundColor(Color.parseColor("#1a1a1a"));
-                tabBar.setBackgroundColor(Color.parseColor("#0d0d0d"));
-                numpadContainer.setBackgroundColor(getResources().getColor(R.color.darkCard));
-                priceDisplay.setBackgroundResource(R.drawable.bg_input_dark);
-                priceDisplay.setTextColor(getResources().getColor(R.color.darkTextPrimary));
-                totalDisplay.setTextColor(getResources().getColor(R.color.darkTextPrimary));
-                budgetLimitDisplay.setTextColor(getResources().getColor(R.color.darkTextPrimary));
-                break;
+        int bgRes, cardRes, textPrimaryRes, textSecondaryRes;
 
-            case THEME_BLUE:
-                rootLayout.setBackgroundColor(getResources().getColor(R.color.background));
-                headerBar.setBackgroundColor(getResources().getColor(R.color.blueDark));
-                tabBar.setBackgroundColor(getResources().getColor(R.color.blueDark));
-                numpadContainer.setBackgroundColor(getResources().getColor(R.color.cardBg));
-                priceDisplay.setTextColor(getResources().getColor(R.color.textPrimary));
-                totalDisplay.setTextColor(getResources().getColor(R.color.bluePrimary));
-                budgetLimitDisplay.setTextColor(getResources().getColor(R.color.bluePrimary));
-                break;
+        if (isDarkTheme()) {
+            rootLayout.setBackgroundColor(getResources().getColor(R.color.darkBg));
+            headerBar.setBackgroundColor(Color.parseColor("#1a1a1a"));
+            tabBar.setBackgroundColor(Color.parseColor("#0d0d0d"));
+            priceDisplay.setBackgroundResource(R.drawable.bg_input_dark);
+            priceDisplay.setTextColor(getResources().getColor(R.color.darkTextPrimary));
+            totalDisplay.setTextColor(getResources().getColor(R.color.darkTextPrimary));
+            budgetLimitDisplay.setTextColor(getResources().getColor(R.color.darkTextPrimary));
+            bgRes = R.color.darkBg;
+            cardRes = R.color.darkCard;
+            textPrimaryRes = R.color.darkTextPrimary;
+            textSecondaryRes = R.color.darkTextSecondary;
+        } else if (currentTheme == THEME_BLUE) {
+            rootLayout.setBackgroundColor(getResources().getColor(R.color.background));
+            headerBar.setBackgroundColor(getResources().getColor(R.color.blueDark));
+            tabBar.setBackgroundColor(getResources().getColor(R.color.blueDark));
+            priceDisplay.setBackgroundResource(R.drawable.bg_input);
+            priceDisplay.setTextColor(getResources().getColor(R.color.textPrimary));
+            totalDisplay.setTextColor(getResources().getColor(R.color.bluePrimary));
+            budgetLimitDisplay.setTextColor(getResources().getColor(R.color.bluePrimary));
+            bgRes = R.color.background;
+            cardRes = R.color.cardBg;
+            textPrimaryRes = R.color.textPrimary;
+            textSecondaryRes = R.color.textSecondary;
+        } else {
+            rootLayout.setBackgroundColor(getResources().getColor(R.color.background));
+            headerBar.setBackgroundColor(getResources().getColor(R.color.headerBg));
+            tabBar.setBackgroundColor(getResources().getColor(R.color.primaryDark));
+            priceDisplay.setBackgroundResource(R.drawable.bg_input);
+            priceDisplay.setTextColor(getResources().getColor(R.color.textPrimary));
+            totalDisplay.setTextColor(getResources().getColor(R.color.totalColor));
+            budgetLimitDisplay.setTextColor(getResources().getColor(R.color.primary));
+            bgRes = R.color.background;
+            cardRes = R.color.cardBg;
+            textPrimaryRes = R.color.textPrimary;
+            textSecondaryRes = R.color.textSecondary;
+        }
 
-            default:
-                rootLayout.setBackgroundColor(getResources().getColor(R.color.background));
-                headerBar.setBackgroundColor(getResources().getColor(R.color.headerBg));
-                tabBar.setBackgroundColor(getResources().getColor(R.color.primaryDark));
-                numpadContainer.setBackgroundColor(getResources().getColor(R.color.cardBg));
-                priceDisplay.setTextColor(getResources().getColor(R.color.textPrimary));
-                totalDisplay.setTextColor(getResources().getColor(R.color.totalColor));
-                budgetLimitDisplay.setTextColor(getResources().getColor(R.color.primary));
-                break;
+        // Calculator page
+        calculatorPage.setBackgroundColor(getResources().getColor(cardRes));
+        numpadContainer.setBackgroundColor(getResources().getColor(cardRes));
+
+        LinearLayout colHeader = findViewById(R.id.columnHeader);
+        if (colHeader != null) {
+            colHeader.setBackgroundColor(getResources().getColor(cardRes));
+            for (int i = 0; i < colHeader.getChildCount(); i++) {
+                View child = colHeader.getChildAt(i);
+                if (child instanceof TextView) {
+                    ((TextView) child).setTextColor(getResources().getColor(textSecondaryRes));
+                }
+            }
+        }
+
+        cartList.setBackgroundColor(getResources().getColor(cardRes));
+
+        LinearLayout inputArea = findViewById(R.id.inputAreaContainer);
+        if (inputArea != null) inputArea.setBackgroundColor(getResources().getColor(cardRes));
+
+        LinearLayout footer = findViewById(R.id.cartFooter);
+        if (footer != null) footer.setBackgroundColor(getResources().getColor(cardRes));
+
+        TextView ev = findViewById(R.id.emptyView);
+        if (ev != null) ev.setTextColor(getResources().getColor(textSecondaryRes));
+
+        // Tab 1 - Despesas page
+        expensesPage.setBackgroundColor(getResources().getColor(cardRes));
+        View expPageTitle = expensesPage.getChildAt(0);
+        if (expPageTitle instanceof TextView) {
+            expPageTitle.setBackgroundColor(getResources().getColor(bgRes));
+            ((TextView) expPageTitle).setTextColor(getResources().getColor(textPrimaryRes));
+        }
+
+        // Sub-tab text colors (Tab 1)
+        int subTabActiveColor = themeColor(R.color.headerText, R.color.darkTextPrimary);
+        int subTabInactiveColor = themeColor(R.color.textSecondary, R.color.darkTextSecondary);
+        expTabMarket.setTextColor(subTabActiveColor);
+        expTabFinance.setTextColor(subTabInactiveColor);
+
+        // Tab 2 - Listas page (savedListsPage)
+        savedListsPage.setBackgroundColor(getResources().getColor(bgRes));
+        View listasHeader = savedListsPage.getChildAt(0);
+        if (listasHeader instanceof View) listasHeader.setBackgroundColor(getResources().getColor(cardRes));
+        for (int i = 0; listasHeader instanceof ViewGroup && i < ((ViewGroup) listasHeader).getChildCount(); i++) {
+            View child = ((ViewGroup) listasHeader).getChildAt(i);
+            if (child instanceof TextView) {
+                ((TextView) child).setTextColor(getResources().getColor(textPrimaryRes));
+            }
+        }
+
+        expFinanceContent.setBackgroundColor(getResources().getColor(cardRes));
+        View efContent = expFinanceContent.getChildAt(0);
+        if (efContent instanceof View) efContent.setBackgroundColor(getResources().getColor(cardRes));
+
+        // Expense input area background
+        View expInputArea = expFinanceContent.findViewById(R.id.expenseDesc);
+        if (expInputArea != null) ((ViewGroup) expInputArea.getParent()).setBackgroundColor(getResources().getColor(cardRes));
+
+        // Expense list, empty text, buttons area
+        expenseListView.setBackgroundColor(getResources().getColor(cardRes));
+        emptyExpensesText.setTextColor(getResources().getColor(textSecondaryRes));
+        View expBtnArea = findViewById(R.id.expenseReportBtn);
+        if (expBtnArea != null) ((ViewGroup) expBtnArea.getParent()).setBackgroundColor(getResources().getColor(cardRes));
+
+        // Expense total footer
+        View expTotalFooter = findViewById(R.id.expenseTotalDisplay);
+        if (expTotalFooter != null) {
+            View parent = (View) expTotalFooter.getParent();
+            while (parent.getParent() != expFinanceContent && parent.getParent() instanceof View) {
+                parent = (View) parent.getParent();
+            }
+            parent.setBackgroundColor(getResources().getColor(cardRes));
+        }
+
+        // Finance budget row
+        View financeBudgetRow = findViewById(R.id.financeBudgetRow);
+        if (financeBudgetRow != null) {
+            financeBudgetRow.setBackgroundResource(isDarkTheme() ? R.drawable.bg_input_dark : R.drawable.bg_budget_highlight);
+        }
+
+        // Market and finance files content
+        if (expMarketContent != null) expMarketContent.setBackgroundColor(getResources().getColor(cardRes));
+        if (expFinanceFilesContent != null) expFinanceFilesContent.setBackgroundColor(getResources().getColor(cardRes));
+
+        // Settings page
+        settingsPage.setBackgroundColor(getResources().getColor(bgRes));
+        applyThemeToChildren(settingsPage, textPrimaryRes);
+
+        // Notify adapters to repaint with new colors
+        adapter.setTheme(currentTheme);
+        adapter.notifyDataSetChanged();
+        expenseAdapter.notifyDataSetChanged();
+        if (marketAdapter != null) marketAdapter.notifyDataSetChanged();
+        if (expFinanceAdapter != null) expFinanceAdapter.notifyDataSetChanged();
+    }
+
+    private void applyThemeToChildren(View parent, int colorRes) {
+        if (parent instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) parent;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                applyThemeToChildren(vg.getChildAt(i), colorRes);
+            }
+        }
+        if (parent instanceof TextView) {
+            ((TextView) parent).setTextColor(getResources().getColor(colorRes));
         }
     }
 

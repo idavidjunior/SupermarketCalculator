@@ -2,14 +2,11 @@ package com.supermarket.calculator.adapter;
 
 import com.supermarket.calculator.models.CartItem;
 import android.content.Context;
-import android.os.Build;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.inputmethod.EditorInfo;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -35,12 +32,26 @@ public class CartAdapter extends BaseAdapter {
     private final CartListener listener;
     private final NumberFormat currencyFormat;
     private int editingPosition = -1;
+    private int currentTheme = 0;
+    private static final int THEME_DARK = 1;
 
     public CartAdapter(Context context, List<CartItem> items, CartListener listener) {
         this.context = context;
         this.items = items;
         this.listener = listener;
         this.currencyFormat = NumberFormat.getCurrencyInstance(new Locale("pt", "BR"));
+    }
+
+    public void setTheme(int theme) {
+        this.currentTheme = theme;
+    }
+
+    private boolean isDarkTheme() {
+        return currentTheme == THEME_DARK;
+    }
+
+    private int themeColor(int lightRes, int darkRes) {
+        return context.getResources().getColor(isDarkTheme() ? darkRes : lightRes);
     }
 
     public void setEditingPosition(int pos) {
@@ -87,11 +98,7 @@ public class CartAdapter extends BaseAdapter {
             nameEt.setBackgroundResource(R.drawable.bg_input);
             nameEt.setPadding(4, 0, 4, 0);
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                convertView.setBackgroundColor(context.getColor(R.color.highlightBg));
-            } else {
-                convertView.setBackgroundColor(context.getResources().getColor(R.color.highlightBg));
-            }
+            convertView.setBackgroundColor(themeColor(R.color.highlightBg, R.color.darkHighlightBg));
         } else {
             nameEt.setEnabled(false);
             nameEt.setFocusable(false);
@@ -100,14 +107,11 @@ public class CartAdapter extends BaseAdapter {
             nameEt.setCursorVisible(false);
             nameEt.setBackgroundResource(0);
             nameEt.setPadding(0, 0, 0, 0);
-            nameEt.setTextColor(context.getResources().getColor(R.color.textPrimary));
+            nameEt.setTextColor(themeColor(R.color.textPrimary, R.color.darkTextPrimary));
 
-            int colorRes = position % 2 == 0 ? R.color.rowEven : R.color.rowOdd;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                convertView.setBackgroundColor(context.getColor(colorRes));
-            } else {
-                convertView.setBackgroundColor(context.getResources().getColor(colorRes));
-            }
+            int rowColorRes = position % 2 == 0 ? R.color.rowEven : R.color.rowOdd;
+            int darkRowColorRes = position % 2 == 0 ? R.color.darkRowEven : R.color.darkRowOdd;
+            convertView.setBackgroundColor(themeColor(rowColorRes, darkRowColorRes));
         }
 
         Object tag = nameEt.getTag();
