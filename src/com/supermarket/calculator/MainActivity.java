@@ -96,6 +96,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private static final String KEY_SHOW_CLEAR = "show_clear";
     private static final String KEY_SHOW_00 = "show_00";
     private static final String KEY_CUSTOM_ITEMS = "custom_grocery_items";
+    private static final String KEY_CART_STATE = "cart_state";
     private static final int THEME_DEFAULT = 0;
     private static final int THEME_DARK = 1;
     private static final int THEME_BLUE = 2;
@@ -181,9 +182,16 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         applySkin();
         applyNumpadCustomization();
 
+        loadCartState();
         updatePriceDisplay();
         updateTotal();
         refreshSavedLists();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        saveCartState();
     }
 
     private void initViews() {
@@ -378,6 +386,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             }
             adapter.notifyDataSetChanged();
             updateTotal();
+            saveCartState();
             Toast.makeText(this, "Lista completa adicionada! Preencha os pre\u00e7os um por um.", Toast.LENGTH_LONG).show();
         });
         builder.setNegativeButton("Fechar", null);
@@ -627,6 +636,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         adapter.notifyDataSetChanged();
         updateTotal();
         resetInput();
+        saveCartState();
     }
 
     private void mergeOrAddAtTop(CartItem newItem) {
@@ -874,6 +884,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 adapter.notifyDataSetChanged();
                 updateTotal();
                 resetInput();
+                saveCartState();
             })
             .setNegativeButton("Cancelar", null)
             .show();
@@ -1025,6 +1036,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         adapter.notifyDataSetChanged();
         updateTotal();
         resetInput();
+        saveCartState();
     }
 
     private void saveCartAsExpense() {
@@ -1104,6 +1116,54 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         }
     }
 
+    // ==================== CART PERSISTENCE ====================
+
+    private void saveCartState() {
+        if (items == null) return;
+        try {
+            JSONObject root = new JSONObject();
+            JSONArray itemsArr = new JSONArray();
+            for (CartItem item : items) {
+                JSONObject obj = new JSONObject();
+                obj.put("name", item.getName());
+                obj.put("unitPrice", item.getUnitPrice());
+                obj.put("quantity", item.getQuantity());
+                itemsArr.put(obj);
+            }
+            root.put("items", itemsArr);
+            root.put("unnamedCounter", unnamedCounter);
+            root.put("budgetLimit", budgetLimit);
+            root.put("currentQty", currentQty);
+            prefs.edit().putString(KEY_CART_STATE, root.toString()).apply();
+        } catch (Exception e) {
+            Log.e("SuperCalc", "Error saving cart state", e);
+        }
+    }
+
+    private void loadCartState() {
+        String json = prefs.getString(KEY_CART_STATE, null);
+        if (json == null || json.isEmpty()) return;
+        try {
+            JSONObject root = new JSONObject(json);
+            JSONArray itemsArr = root.getJSONArray("items");
+            for (int i = 0; i < itemsArr.length(); i++) {
+                JSONObject obj = itemsArr.getJSONObject(i);
+                CartItem citem = new CartItem(
+                    obj.getString("name"),
+                    obj.getDouble("unitPrice"),
+                    obj.getInt("quantity")
+                );
+                items.add(citem);
+            }
+            unnamedCounter = root.optInt("unnamedCounter", unnamedCounter);
+            budgetLimit = root.optDouble("budgetLimit", budgetLimit);
+            currentQty = root.optInt("currentQty", currentQty);
+            qtyDisplay.setText(String.valueOf(currentQty));
+        } catch (Exception e) {
+            Log.e("SuperCalc", "Error loading cart state", e);
+        }
+    }
+
     private void loadStructuredListIntoCart(File f) {
         try {
             BufferedReader br = new BufferedReader(new FileReader(f));
@@ -1128,6 +1188,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
             adapter.notifyDataSetChanged();
             updateTotal();
+            saveCartState();
             Toast.makeText(this, R.string.template_loaded, Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             Toast.makeText(this, "Erro ao carregar lista.", Toast.LENGTH_SHORT).show();
@@ -2452,7 +2513,6 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         // Clear shared prefs
         prefs.edit().clear().apply();
         getSharedPreferences("supermarket_prefs", MODE_PRIVATE).edit().clear().apply();
-
         // Delete saved files
         File dir = getListasDir();
         if (dir.exists()) {
@@ -2705,6 +2765,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             items.get(position).increment();
             adapter.notifyDataSetChanged();
             updateTotal();
+            saveCartState();
         }
     }
 
@@ -2714,6 +2775,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             items.get(position).decrement();
             adapter.notifyDataSetChanged();
             updateTotal();
+            saveCartState();
         }
     }
 
@@ -2730,6 +2792,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 editingIndex--;
                 adapter.setEditingPosition(editingIndex);
             }
+            saveCartState();
         }
     }
 
@@ -2744,6 +2807,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     public void onNameChanged(int position, String name) {
         if (position >= 0 && position < items.size()) {
             items.get(position).setName(name);
+            saveCartState();
         }
     }
 }

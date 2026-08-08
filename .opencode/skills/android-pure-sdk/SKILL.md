@@ -21,11 +21,12 @@ This section documents the complete mental model of how Android builds work at t
 ```powershell
 $ANDROID_HOME = $env:ANDROID_HOME
 # Must contain:
-#   build-tools/36.0.0/   (aapt.exe, d8.bat, zipalign.exe, apksigner.bat)
-#   platforms/android-36/  (android.jar)
-#   cmdline-tools/latest/  (sdkmanager, d8.bat fallback)
+#   build-tools/<ver>/  (aapt.exe, d8.bat, zipalign.exe, apksigner.bat)
+#   platforms/<ver>/    (android.jar)
 # JDK 8+ must be on PATH  (javac, jar, keytool)
 ```
+
+**NOTE (2026-08-08):** The current build.ps1 AUTO-DETECTS the newest installed build-tools and platform — it no longer hardcodes 36.0.0/android-36. On this machine that resolves to `build-tools/35.0.0` and `platforms/android-35`. Also, **d8.bat and apksigner.bat live in `build-tools/<ver>/`, NOT in `cmdline-tools/latest/bin/`** (that path only has `sdkmanager`).
 
 **Getting ANDROID_HOME right is the #1 build failure cause.** Common paths:
 - `C:\Users\USER\AppData\Local\Android\Sdk`
@@ -225,7 +226,14 @@ apksigner sign --ks "%KEYSTORE%" --ks-pass pass:%STOREPASS% --key-pass pass:%KEY
 | Mode | Keystore | StorePass | KeyAlias | Purpose |
 |------|----------|-----------|----------|---------|
 | Debug | `~/.android/debug.keystore` | `android` | `androiddebugkey` | Development |
-| Release | `release.keystore` (project-local) | User-defined | User-defined | Play Store |
+| Release | `release.keystore` (project-local) | `opencode` | `supermarket` | Play Store |
+
+**SupermarketCalculator release keystore (created 2026-08-08):**
+- Path: `Projetos/SupermarketCalculator/release.keystore`
+- Alias: `supermarket`, StorePass/KeyPass: `opencode`
+- RSA 2048, validity 10000 days, DN: `CN=Supermarket Calculator, OU=UmGrau, O=EcoSystemUmGrau, L=Belem, ST=Para, C=BR`
+- SHA-256: `20b1693cd2ccdbe62294e83bb990599e77762618a774842850f0e73e29026562`
+- **⚠️ CRITICAL: back this keystore up.** Without it, future updates cannot be installed over v1.3.0 (signature mismatch → uninstall+reinstall → data loss).
 
 **Debug keystore:** Created automatically by Android SDK when you first build. Same password/alias across all Android SDK installations. Never use for production.
 
@@ -246,54 +254,70 @@ apksigner verify --print-certs APK.apk                             # shows certi
 apksigner verify --print-certs APK.apk | Select-String "SHA-256"  # check cert fingerprint
 ```
 
-### Complete build.ps1 Template
+### Complete build.ps1 Template (resilient version, 2026-08-08)
+
+This is the actual working template. Key improvements over the naive version:
+- **Auto-detects** newest build-tools and platform (no hardcoded 36.0.0/android-36).
+- **javac via response file** with relative paths → survives spaces in repo path.
+- **DEX added to APK root** via `Push-Location "$BuildDir\dex"` + `aapt add classes.dex` (absolute path would archive it as `build\dex\classes.dex` → `code is missing`).
+- **d8/apksigner** resolved from `$BT` (build-tools), not cmdline-tools.
 
 ```powershell
 param([string]$OutputName = "MyApp", [switch]$Release = $false)
 
 $BuildDir = "build"
 $ANDROID_HOME = $env:ANDROID_HOME
-$BT = "$ANDROID_HOME\build-tools\36.0.0"
-$PLATFORM = "$ANDROID_HOME\platforms\android-36\android.jar"
 $FullBuildDir = "$pwd\$BuildDir"
 
+# Auto-detect newest build-tools and platform
+$BT = Get-ChildItem "$ANDROID_HOME\build-tools" -Directory -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+if (-not $BT) { throw "build-tools not found under $ANDROID_HOME" }
+$PlatformDir = Get-ChildItem "$ANDROID_HOME\platforms" -Directory -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+if (-not $PlatformDir) { throw "platforms not found under $ANDROID_HOME" }
+$PLATFORM = "$PlatformDir\android.jar"
+
 if ($Release) {
+    $Suffix = "-release"
     $KEYSTORE = "$pwd\release.keystore"
-    $STOREPASS = "yourpass"
-    $KEYPASS = "yourpass"
-    $KEYALIAS = "youralias"
+    $STOREPASS = "opencode"
+    $KEYPASS = "opencode"
+    $KEYALIAS = "supermarket"
 } else {
+    $Suffix = "-debug"
     $KEYSTORE = "$env:USERPROFILE\.android\debug.keystore"
     $STOREPASS = "android"
     $KEYPASS = "android"
     $KEYALIAS = "androiddebugkey"
 }
 
-$Suffix = if ($Release) { "-release" } else { "-debug" }
 $ApkName = "$OutputName$Suffix"
 
 # Clean and create directories
 if (Test-Path $BuildDir) { Remove-Item -Recurse -Force $BuildDir }
 New-Item -ItemType Directory -Path "$BuildDir\classes", "$BuildDir\dex" -Force | Out-Null
 
-# Collect source files
-$srcFiles = (Get-ChildItem -Recurse -Path src -Filter "*.java" | ForEach-Object { $_.FullName }) -join " "
+# javac response file — RELATIVE paths (no spaces), no BOM
+$srcFiles = Get-ChildItem -Recurse -Path src -Filter "*.java" | ForEach-Object { $_.FullName }
+$srcFileList = Join-Path $FullBuildDir "sources.txt"
+$rel = $srcFiles | ForEach-Object { $_.Substring($pwd.Path.Length + 1) }
+[System.IO.File]::WriteAllLines($srcFileList, $rel, (New-Object System.Text.UTF8Encoding($false)))
 
-function exec($desc, $cmd) {
+function exec($desc, $scriptblock) {
     Write-Host $desc -ForegroundColor Cyan
-    $out = cmd /c "$cmd 2>&1"
-    if ($LASTEXITCODE -ne 0) { Write-Host $out -ForegroundColor Red; throw "$desc FAILED" }
-    if ($out) { Write-Host $out }
+    & $scriptblock 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "$desc FAILED (exit $LASTEXITCODE)" }
 }
 
-exec "Generate R.java" "`"$BT\aapt.exe`" package -f -m -M AndroidManifest.xml -S res -I `"$PLATFORM`" -J src"
-exec "Compile Java" "javac -cp `"$PLATFORM`" -d `"$BuildDir\classes`" $srcFiles"
-exec "Create JAR" "jar cf `"$BuildDir\classes.jar`" -C `"$BuildDir\classes`" ."
-exec "Convert to DEX" "`"$BT\d8.bat`" --lib `"$PLATFORM`" --release --output `"$BuildDir\dex`" `"$BuildDir\classes.jar`""
-exec "Package APK" "`"$BT\aapt.exe`" package -f -M AndroidManifest.xml -S res -I `"$PLATFORM`" -F `"$BuildDir\$ApkName-unsigned.apk`""
-exec "Add DEX to APK" "cd /d `"$FullBuildDir`" && copy /Y dex\classes.dex classes.dex >nul && `"$BT\aapt.exe`" add $ApkName-unsigned.apk classes.dex"
-exec "Zipalign" "`"$BT\zipalign.exe`" -f -v 4 `"$BuildDir\$ApkName-unsigned.apk`" `"$BuildDir\$ApkName-aligned.apk`""
-exec "Sign APK" "`"$BT\apksigner.bat`" sign --ks `"$KEYSTORE`" --ks-pass pass:$STOREPASS --key-pass pass:$KEYPASS --ks-key-alias $KEYALIAS `"$BuildDir\$ApkName-aligned.apk`""
+exec "Generate R.java" { & "$BT\aapt.exe" package -f -m -M AndroidManifest.xml -S res -I $PLATFORM -J src }
+exec "Compile Java" { & javac -encoding UTF-8 -cp $PLATFORM -d "$BuildDir\classes" "@$srcFileList" }
+exec "Create JAR" { & jar cf "$BuildDir\classes.jar" -C "$BuildDir\classes" . }
+exec "Convert to DEX" { cmd /c "`"$BT\d8.bat`" --lib `"$PLATFORM`" --output `"$FullBuildDir\dex`" `"$FullBuildDir\classes.jar`"" }
+exec "Package APK" { & "$BT\aapt.exe" package -f -M AndroidManifest.xml -S res -I $PLATFORM -F "$BuildDir\$ApkName-unsigned.apk" }
+exec "Add DEX to APK root" { Push-Location "$BuildDir\dex"; try { & "$BT\aapt.exe" add "$FullBuildDir\$ApkName-unsigned.apk" classes.dex } finally { Pop-Location } }
+exec "Zipalign" { & "$BT\zipalign.exe" -f 4 "$BuildDir\$ApkName-unsigned.apk" "$BuildDir\$ApkName-aligned.apk" }
+exec "Sign APK" { cmd /c "`"$BT\apksigner.bat`" sign --ks `"$KEYSTORE`" --ks-pass pass:$STOREPASS --key-pass pass:$KEYPASS --ks-key-alias $KEYALIAS `"$FullBuildDir\$ApkName-aligned.apk`"" }
 
 Copy-Item "$BuildDir\$ApkName-aligned.apk" "$ApkName.apk" -Force
 Write-Host "=== APK ready: $ApkName.apk ===" -ForegroundColor Green
@@ -309,7 +333,11 @@ Write-Host "=== APK ready: $ApkName.apk ===" -ForegroundColor Green
 | `Unmatched >` / `>` | aapt | Wrong closing tag order | Common in nested LinearLayouts — trace each open/close |
 | `ClassNotFoundException` | d8 | Missing class in classpath | Check javac classpath includes all dependencies |
 | `INSTALL_FAILED_INVALID_APK` | install | Zipalign missing or failed | Check zipalign output, re-run |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | install | APK signed with different key | Same app must be signed with same keystore always |
+| `INSTALL_FAILED_INVALID_APK: code is missing` | install | DEX not at APK root | `aapt add` uses the arg path as archive name; run `aapt add` with cwd = dex dir so it adds `classes.dex` (see Add DEX step) |
+| `error: invalid flag: C:\Users...` | javac | Project path contains spaces | Use a javac response file (`@sources.txt`) with RELATIVE paths (no spaces), written with UTF8Encoding($false) |
+| `error: file not found: C:UsersDavid...` | javac | Backslashes mangled in response file | Argfile entries must be relative paths, not absolute quoted paths |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | install | APK signed with different key | Same app must be signed with same keystore always — uninstall+reinstall loses data |
+| `INSTALL_FAILED_USER_RESTRICTED` | install | Install blocked/needs confirmation | `adb install -r -t` usually succeeds |
 | `Failure [INSTALL_FAILED_OLDER_SDK]` | install | targetSdkVersion < device OS | Update targetSdkVersion or use older device |
 | No main activity found | install | Missing intent-filter in manifest | Add `<action android:name="android.intent.action.MAIN" />` |
 | `Error while executing: am start` | install | Activity crash on launch | Check Logcat for crash details |
@@ -810,6 +838,57 @@ private void loadSettings() {
 6. **Merge by name** — If name matches existing item, increment quantity instead of duplicating; NEVER merge unnamed items
 7. **`setAlpha(0)` over `setVisibility(GONE)`** — Preserves grid layout in numpad
 8. **`apply()` over `commit()`** — Asynchronous write, returns immediately (sufficient for small configs)
+9. **Persist cart state in SharedPreferences** — In-memory `ArrayList<CartItem>` is destroyed when the Activity is recreated (screen lock, config change, process kill). Save the cart as JSON in prefs on EVERY mutation (add, edit, increment, decrement, remove, clear) plus `onPause()` as safety net; restore in `onCreate` after adapter setup.
+
+## Cart Persistence Pattern (survives screen lock / process death)
+```java
+private static final String KEY_CART_STATE = "cart_state";
+
+private void saveCartState() {
+    if (items == null) return;
+    try {
+        JSONObject root = new JSONObject();
+        JSONArray arr = new JSONArray();
+        for (CartItem item : items) {
+            JSONObject o = new JSONObject();
+            o.put("name", item.getName());
+            o.put("unitPrice", item.getUnitPrice());
+            o.put("quantity", item.getQuantity());
+            arr.put(o);
+        }
+        root.put("items", arr);
+        root.put("unnamedCounter", unnamedCounter);
+        root.put("budgetLimit", budgetLimit);
+        root.put("currentQty", currentQty);
+        prefs.edit().putString(KEY_CART_STATE, root.toString()).apply();
+    } catch (Exception e) { /* log */ }
+}
+
+private void loadCartState() {
+    String json = prefs.getString(KEY_CART_STATE, null);
+    if (json == null || json.isEmpty()) return;
+    try {
+        JSONObject root = new JSONObject(json);
+        JSONArray arr = root.getJSONArray("items");
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject o = arr.getJSONObject(i);
+            items.add(new CartItem(o.getString("name"),
+                o.getDouble("unitPrice"), o.getInt("quantity")));
+        }
+        unnamedCounter = root.optInt("unnamedCounter", unnamedCounter);
+        budgetLimit = root.optDouble("budgetLimit", budgetLimit);
+        currentQty = root.optInt("currentQty", currentQty);
+        qtyDisplay.setText(String.valueOf(currentQty));
+    } catch (Exception e) { /* log */ }
+}
+
+@Override
+protected void onPause() {
+    super.onPause();
+    saveCartState();
+}
+```
+Call `saveCartState()` after every cart mutation (`addOrUpdateItem`, `clearCart`, `clearCartAfterFinish`, `loadStructuredListIntoCart`, adapter listeners); call `loadCartState()` in `onCreate` after `setupCalculator()` and before `updateTotal()`.
 
 ## Getting Started
 
