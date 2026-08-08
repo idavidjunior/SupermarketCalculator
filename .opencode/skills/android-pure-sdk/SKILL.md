@@ -811,6 +811,68 @@ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 }
 ```
 
+## Sound Effects Pattern (SoundPool + res/raw)
+**NOTE (2026-08-08):** SoundPool is the right choice for short UI sound effects (button clicks).
+`MediaPlayer` is heavier and unsuitable for rapid repeated playback. SoundPool preloads into memory once.
+
+```java
+// Fields
+private SoundPool soundPool;
+private int soundCashId = -1, soundPopId = -1, soundBeepId = -1;
+private static final String KEY_SOUND = "add_sound";   // SharedPreferences key
+private static final int SOUND_CASH_REGISTER = 0, SOUND_POP = 1, SOUND_BEEP = 2;
+
+// onCreate — build pool, load sounds (ids >= 0 when loaded; check before play)
+soundPool = new SoundPool.Builder().setMaxStreams(1).build();
+soundCashId = soundPool.load(this, R.raw.som_caixa, 1);
+soundPopId = soundPool.load(this, R.raw.som_pop, 1);
+soundBeepId = soundPool.load(this, R.raw.som_bip, 1);
+
+// Play helper
+private void playAddSound() {
+    if (soundPool == null) return;
+    int id;
+    switch (currentSound) {
+        case SOUND_POP: id = soundPopId; break;
+        case SOUND_BEEP: id = soundBeepId; break;
+        default: id = soundCashId; break;
+    }
+    if (id != -1) soundPool.play(id, 1f, 1f, 1, 0, 1f);
+}
+
+// onDestroy — MUST release to avoid native memory leak
+@Override protected void onDestroy() {
+    super.onDestroy();
+    if (soundPool != null) { soundPool.release(); soundPool = null; }
+}
+```
+
+**Raw sound resources:** put `.wav` files in `res/raw/`. `aapt` packages them **automatically**
+(no extra config); reference as `R.raw.<filename>` (filename must be lowercase, digits/underscore only).
+The build pipeline (`aapt package -S res`) already handles `res/raw` — no build.ps1 change needed.
+
+**Settings radio group pattern:**
+```xml
+<RadioGroup android:id="@+id/soundGroup" android:orientation="vertical">
+    <RadioButton android:id="@+id/soundCashRegister" android:text="Caixa registradora" .../>
+    <RadioButton android:id="@+id/soundPop" android:text="Pop" .../>
+    <RadioButton android:id="@+id/soundBeep" android:text="Bip" .../>
+</RadioGroup>
+```
+```java
+// init state
+soundGroup.check(currentSound == SOUND_POP ? R.id.soundPop
+    : currentSound == SOUND_BEEP ? R.id.soundBeep : R.id.soundCashRegister);
+// listener
+soundGroup.setOnCheckedChangeListener((g, id) -> {
+    if (id == R.id.soundCashRegister) currentSound = SOUND_CASH_REGISTER;
+    else if (id == R.id.soundPop) currentSound = SOUND_POP;
+    else if (id == R.id.soundBeep) currentSound = SOUND_BEEP;
+    saveSettings();
+    playAddSound();  // preview the chosen sound immediately
+});
+```
+
 ## SharedPreferences Pattern (immediate save)
 ```java
 private static final String PREFS_NAME = "settings";

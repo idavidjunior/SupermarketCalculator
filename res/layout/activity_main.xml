@@ -1085,6 +1085,55 @@
                     android:background="@color/divider"
                     android:layout_marginVertical="8dp" />
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Som do botão Adicionar"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="8dp" />
+
+                <RadioGroup
+                    android:id="@+id/soundGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <RadioButton
+                        android:id="@+id/soundCashRegister"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Caixa registradora"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="13sp"
+                        android:paddingVertical="6dp" />
+
+                    <RadioButton
+                        android:id="@+id/soundPop"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Pop"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="13sp"
+                        android:paddingVertical="6dp" />
+
+                    <RadioButton
+                        android:id="@+id/soundBeep"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Bip"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="13sp"
+                        android:paddingVertical="6dp" />
+                </RadioGroup>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/divider"
+                    android:layout_marginVertical="8dp" />
+
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"

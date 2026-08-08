@@ -23,6 +23,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
+import android.media.SoundPool;
 import android.widget.*;
 import java.io.BufferedReader;
 import java.io.File;
@@ -103,11 +104,19 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private static final String KEY_VIBRATION = "vibration";
     private static final int SKIN_DEFAULT = 0;
     private static final int SKIN_ROUNDED = 1;
+    private static final String KEY_SOUND = "add_sound";
+    private static final int SOUND_CASH_REGISTER = 0;
+    private static final int SOUND_POP = 1;
+    private static final int SOUND_BEEP = 2;
+    private static final int SOUND_NONE = 3;
 
     private int currentTheme = THEME_DEFAULT;
     private int currentSkin = SKIN_DEFAULT;
     private boolean showOps = false, showBack = true, showClear = true, show00 = true;
     private boolean vibrationEnabled = true;
+    private int currentSound = SOUND_CASH_REGISTER;
+    private SoundPool soundPool;
+    private int soundCashId = -1, soundPopId = -1, soundBeepId = -1;
 
     private LinearLayout opsRow;
     private double operand1 = 0;
@@ -170,6 +179,11 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         currencyFormat = NumberFormat.getCurrencyInstance(new Locale("pt", "BR"));
 
+        soundPool = new SoundPool.Builder().setMaxStreams(1).build();
+        soundCashId = soundPool.load(this, R.raw.som_caixa, 1);
+        soundPopId = soundPool.load(this, R.raw.som_pop, 1);
+        soundBeepId = soundPool.load(this, R.raw.som_bip, 1);
+
         initViews();
         setupTabs();
         setupCalculator();
@@ -192,6 +206,15 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     protected void onPause() {
         super.onPause();
         saveCartState();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (soundPool != null) {
+            soundPool.release();
+            soundPool = null;
+        }
     }
 
     private void initViews() {
@@ -273,6 +296,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         showClear = prefs.getBoolean(KEY_SHOW_CLEAR, true);
         show00 = prefs.getBoolean(KEY_SHOW_00, true);
         vibrationEnabled = prefs.getBoolean(KEY_VIBRATION, true);
+        currentSound = prefs.getInt(KEY_SOUND, SOUND_CASH_REGISTER);
     }
 
     private void saveSettings() {
@@ -284,6 +308,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             .putBoolean(KEY_SHOW_CLEAR, showClear)
             .putBoolean(KEY_SHOW_00, show00)
             .putBoolean(KEY_VIBRATION, vibrationEnabled)
+            .putInt(KEY_SOUND, currentSound)
             .apply();
     }
 
@@ -637,6 +662,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         updateTotal();
         resetInput();
         saveCartState();
+        playAddSound();
     }
 
     private void mergeOrAddAtTop(CartItem newItem) {
@@ -710,6 +736,17 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             budgetWarned = false;
             budgetExceededWarned = false;
         }
+    }
+
+    private void playAddSound() {
+        if (soundPool == null) return;
+        int id;
+        switch (currentSound) {
+            case SOUND_POP: id = soundPopId; break;
+            case SOUND_BEEP: id = soundBeepId; break;
+            default: id = soundCashId; break;
+        }
+        if (id != -1) soundPool.play(id, 1f, 1f, 1, 0, 1f);
     }
 
     private void vibrateStrong() {
@@ -2437,6 +2474,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private void setupSettings() {
         RadioGroup themeGroup = findViewById(R.id.themeGroup);
         RadioGroup skinGroup = findViewById(R.id.skinGroup);
+        RadioGroup soundGroup = findViewById(R.id.soundGroup);
         CheckBox chkShowOps = findViewById(R.id.chkShowOps);
         CheckBox chkShowBack = findViewById(R.id.chkShowBack);
         CheckBox chkShowClear = findViewById(R.id.chkShowClear);
@@ -2449,6 +2487,12 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
         int skinId = currentSkin == SKIN_ROUNDED ? R.id.skinRounded : R.id.skinDefault;
         skinGroup.check(skinId);
+
+        int soundId = currentSound == SOUND_CASH_REGISTER ? R.id.soundCashRegister
+            : currentSound == SOUND_POP ? R.id.soundPop
+            : currentSound == SOUND_BEEP ? R.id.soundBeep
+            : -1;
+        if (soundId != -1) soundGroup.check(soundId);
 
         chkShowOps.setChecked(showOps);
         chkShowBack.setChecked(showBack);
@@ -2468,6 +2512,14 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             currentSkin = (id == R.id.skinRounded) ? SKIN_ROUNDED : SKIN_DEFAULT;
             saveSettings();
             applySkin();
+        });
+
+        soundGroup.setOnCheckedChangeListener((g, id) -> {
+            if (id == R.id.soundCashRegister) currentSound = SOUND_CASH_REGISTER;
+            else if (id == R.id.soundPop) currentSound = SOUND_POP;
+            else if (id == R.id.soundBeep) currentSound = SOUND_BEEP;
+            saveSettings();
+            playAddSound();
         });
 
         chkShowOps.setOnCheckedChangeListener((b, checked) -> {
@@ -2535,6 +2587,10 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
         // Reset settings to defaults
         loadSettings();
+        RadioGroup soundGroupAfterReset = findViewById(R.id.soundGroup);
+        if (soundGroupAfterReset != null) {
+            soundGroupAfterReset.check(R.id.soundCashRegister);
+        }
         applyTheme();
         applySkin();
         applyNumpadCustomization();

@@ -1,4 +1,4 @@
-# SupermarketCalculator — Guia de Build e Release (v1.3.0)
+# SupermarketCalculator — Guia de Build e Release (v1.4.0)
 
 > Fonte de verdade operacional para compilar, versionar, assinar e instalar o app.
 > Atualizado em 2026-08-08.
@@ -33,6 +33,7 @@ Histórico de versões:
 |--------|-------------|------|-------------|
 | 1.2.0 | 3 | 2026-07-31 | Versão anterior (assinatura diferente) |
 | 1.3.0 | 4 | 2026-08-08 | Persistência do carrinho ao bloquear tela + build.ps1 resiliente |
+| 1.4.0 | 5 | 2026-08-08 | Som no botão Adicionar (3 opções: caixa registradora, pop, bip) |
 
 ## Assinatura (release keystore)
 
@@ -78,6 +79,17 @@ Erros comuns:
   a **cada mutação** + `onPause()`, e restaurado no `onCreate`.
 - Pontos de mutação cobertos: adicionar, editar, +/- quantidade, remover, limpar, carregar lista, "Adicionar todos".
 - Se mexer em qualquer um desses fluxos, garanta que `saveCartState()` é chamado.
+
+## Som no botão Adicionar (v1.4.0)
+
+- O botão "Adicionar" toca um som ao adicionar item (após validação do preço).
+- **3 sons pré-carregados** em `res/raw/`: `som_caixa.wav` (caixa registradora), `som_pop.wav`, `som_bip.wav`.
+- Config em **Config → Som do botão Adicionar** (RadioGroup `soundGroup`, RadioButtons `soundCashRegister`/`soundPop`/`soundBeep`).
+- Preferência salva em SharedPreferences (`settings`, chave `KEY_SOUND = "add_sound"`).
+- Reprodução via **SoundPool** (`SoundPool.Builder().setMaxStreams(1)`), sons carregados no `onCreate`
+  e liberados no `onDestroy`. Tocar: `soundPool.play(id, 1, 1, 1, 0, 1)`.
+- Para trocar de som: basta substituir/renomear os WAVs em `res/raw/` (o aapt empacota `.wav` em `res/raw/`
+  sem configuração extra) e manter os nomes `som_caixa/som_pop/som_bip`.
 
 ## Local do APK publicado
 
