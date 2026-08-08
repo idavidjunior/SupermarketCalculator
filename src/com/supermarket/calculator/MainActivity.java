@@ -7,11 +7,15 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.provider.OpenableColumns;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
@@ -32,6 +36,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -108,15 +113,27 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private static final int SOUND_CASH_REGISTER = 0;
     private static final int SOUND_POP = 1;
     private static final int SOUND_BEEP = 2;
-    private static final int SOUND_NONE = 3;
+    private static final int SOUND_COIN = 3;
+    private static final int SOUND_BARCODE = 4;
+    private static final int SOUND_SUCCESS = 5;
+    private static final int SOUND_ERROR = 6;
+    private static final int SOUND_CLICK = 7;
+    private static final int SOUND_DRAWER = 8;
+    private static final int SOUND_CUSTOM = 9;
+    private static final String KEY_CUSTOM_SOUND_PATH = "custom_sound_path";
+    private static final int REQUEST_PICK_SOUND = 9001;
 
     private int currentTheme = THEME_DEFAULT;
     private int currentSkin = SKIN_DEFAULT;
     private boolean showOps = false, showBack = true, showClear = true, show00 = true;
     private boolean vibrationEnabled = true;
     private int currentSound = SOUND_CASH_REGISTER;
+    private int previousSound = SOUND_CASH_REGISTER;
     private SoundPool soundPool;
     private int soundCashId = -1, soundPopId = -1, soundBeepId = -1;
+    private int soundCoinId = -1, soundBarcodeId = -1, soundSuccessId = -1;
+    private int soundErrorId = -1, soundClickId = -1, soundDrawerId = -1, soundCustomId = -1;
+    private String customSoundPath = null;
 
     private LinearLayout opsRow;
     private double operand1 = 0;
@@ -183,6 +200,19 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         soundCashId = soundPool.load(this, R.raw.som_caixa, 1);
         soundPopId = soundPool.load(this, R.raw.som_pop, 1);
         soundBeepId = soundPool.load(this, R.raw.som_bip, 1);
+        soundCoinId = soundPool.load(this, R.raw.som_coin, 1);
+        soundBarcodeId = soundPool.load(this, R.raw.som_barcode, 1);
+        soundSuccessId = soundPool.load(this, R.raw.som_success, 1);
+        soundErrorId = soundPool.load(this, R.raw.som_error, 1);
+        soundClickId = soundPool.load(this, R.raw.som_click, 1);
+        soundDrawerId = soundPool.load(this, R.raw.som_drawer, 1);
+        loadCustomSoundId();
+
+        if (currentSound == SOUND_CUSTOM && soundCustomId == -1) {
+            currentSound = SOUND_CASH_REGISTER;
+            previousSound = SOUND_CASH_REGISTER;
+            saveSettings();
+        }
 
         initViews();
         setupTabs();
@@ -744,9 +774,134 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         switch (currentSound) {
             case SOUND_POP: id = soundPopId; break;
             case SOUND_BEEP: id = soundBeepId; break;
+            case SOUND_COIN: id = soundCoinId; break;
+            case SOUND_BARCODE: id = soundBarcodeId; break;
+            case SOUND_SUCCESS: id = soundSuccessId; break;
+            case SOUND_ERROR: id = soundErrorId; break;
+            case SOUND_CLICK: id = soundClickId; break;
+            case SOUND_DRAWER: id = soundDrawerId; break;
+            case SOUND_CUSTOM: id = soundCustomId; break;
             default: id = soundCashId; break;
         }
         if (id != -1) soundPool.play(id, 1f, 1f, 1, 0, 1f);
+    }
+
+    private void loadCustomSoundId() {
+        if (soundPool == null) return;
+        customSoundPath = prefs.getString(KEY_CUSTOM_SOUND_PATH, null);
+        if (customSoundPath == null || customSoundPath.isEmpty()) {
+            soundCustomId = -1;
+            return;
+        }
+        File f = new File(customSoundPath);
+        if (!f.exists()) {
+            soundCustomId = -1;
+            return;
+        }
+        soundCustomId = soundPool.load(customSoundPath, 1);
+    }
+
+    private void pickCustomSound() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("audio/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+            "audio/mpeg", "audio/x-wav", "audio/wav", "audio/ogg",
+            "audio/aac", "audio/mp4", "audio/3gpp", "audio/amr"
+        });
+        try {
+            startActivityForResult(intent, REQUEST_PICK_SOUND);
+        } catch (Exception e) {
+            Toast.makeText(this, "Seletor de arquivos indisponível.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void copyPickedSoundToInternal(Uri uri) {
+        String ext = getSoundExtension(uri);
+        try {
+            InputStream in = getContentResolver().openInputStream(uri);
+            if (in == null) {
+                Toast.makeText(this, "Não foi possível ler o arquivo.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            File dir = getFilesDir();
+            File target = new File(dir, "custom_sound" + ext);
+            File tmp = new File(dir, "custom_sound" + ext + ".tmp");
+            FileOutputStream fos = new FileOutputStream(tmp);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) fos.write(buf, 0, n);
+            fos.close();
+            in.close();
+            if (target.exists()) target.delete();
+            tmp.renameTo(target);
+
+            prefs.edit().putString(KEY_CUSTOM_SOUND_PATH, target.getAbsolutePath()).apply();
+            customSoundPath = target.getAbsolutePath();
+            if (soundPool != null) {
+                if (soundCustomId != -1) {
+                    soundPool.unload(soundCustomId);
+                }
+                soundCustomId = soundPool.load(customSoundPath, 1);
+            }
+            Toast.makeText(this, "Som personalizado definido!", Toast.LENGTH_SHORT).show();
+            playAddSound();
+        } catch (IOException e) {
+            Log.e("SuperCalc", "Error copying custom sound", e);
+            Toast.makeText(this, "Erro ao copiar o som.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String getSoundExtension(Uri uri) {
+        String name = null;
+        Cursor c = getContentResolver().query(uri, null, null, null, null);
+        if (c != null) {
+            try {
+                if (c.moveToFirst()) {
+                    int idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (idx >= 0) name = c.getString(idx);
+                }
+            } finally {
+                c.close();
+            }
+        }
+        if (name == null) {
+            String last = uri.getLastPathSegment();
+            if (last != null && last.contains(".")) {
+                name = last.substring(last.lastIndexOf('.'));
+                return name;
+            }
+            return ".wav";
+        }
+        int dot = name.lastIndexOf('.');
+        if (dot >= 0) return name.substring(dot);
+        return ".wav";
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_PICK_SOUND && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            copyPickedSoundToInternal(data.getData());
+        } else if (requestCode == REQUEST_PICK_SOUND) {
+            currentSound = previousSound;
+            saveSettings();
+            int soundId = currentSound == SOUND_CASH_REGISTER ? R.id.soundCashRegister
+                : currentSound == SOUND_POP ? R.id.soundPop
+                : currentSound == SOUND_BEEP ? R.id.soundBeep
+                : currentSound == SOUND_COIN ? R.id.soundCoin
+                : currentSound == SOUND_BARCODE ? R.id.soundBarcode
+                : currentSound == SOUND_SUCCESS ? R.id.soundSuccess
+                : currentSound == SOUND_ERROR ? R.id.soundError
+                : currentSound == SOUND_CLICK ? R.id.soundClick
+                : currentSound == SOUND_DRAWER ? R.id.soundDrawer
+                : currentSound == SOUND_CUSTOM ? R.id.soundCustom
+                : -1;
+            if (soundId != -1) {
+                RadioGroup g = findViewById(R.id.soundGroup);
+                if (g != null) g.check(soundId);
+            }
+        }
     }
 
     private void vibrateStrong() {
@@ -2491,6 +2646,13 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         int soundId = currentSound == SOUND_CASH_REGISTER ? R.id.soundCashRegister
             : currentSound == SOUND_POP ? R.id.soundPop
             : currentSound == SOUND_BEEP ? R.id.soundBeep
+            : currentSound == SOUND_COIN ? R.id.soundCoin
+            : currentSound == SOUND_BARCODE ? R.id.soundBarcode
+            : currentSound == SOUND_SUCCESS ? R.id.soundSuccess
+            : currentSound == SOUND_ERROR ? R.id.soundError
+            : currentSound == SOUND_CLICK ? R.id.soundClick
+            : currentSound == SOUND_DRAWER ? R.id.soundDrawer
+            : currentSound == SOUND_CUSTOM ? R.id.soundCustom
             : -1;
         if (soundId != -1) soundGroup.check(soundId);
 
@@ -2518,6 +2680,23 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             if (id == R.id.soundCashRegister) currentSound = SOUND_CASH_REGISTER;
             else if (id == R.id.soundPop) currentSound = SOUND_POP;
             else if (id == R.id.soundBeep) currentSound = SOUND_BEEP;
+            else if (id == R.id.soundCoin) currentSound = SOUND_COIN;
+            else if (id == R.id.soundBarcode) currentSound = SOUND_BARCODE;
+            else if (id == R.id.soundSuccess) currentSound = SOUND_SUCCESS;
+            else if (id == R.id.soundError) currentSound = SOUND_ERROR;
+            else if (id == R.id.soundClick) currentSound = SOUND_CLICK;
+            else if (id == R.id.soundDrawer) currentSound = SOUND_DRAWER;
+            else if (id == R.id.soundCustom) {
+                previousSound = currentSound;
+                currentSound = SOUND_CUSTOM;
+                saveSettings();
+                if (soundCustomId == -1) {
+                    pickCustomSound();
+                } else {
+                    playAddSound();
+                }
+                return;
+            }
             saveSettings();
             playAddSound();
         });
@@ -2587,6 +2766,11 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
         // Reset settings to defaults
         loadSettings();
+        if (soundPool != null && soundCustomId != -1) {
+            soundPool.unload(soundCustomId);
+            soundCustomId = -1;
+        }
+        customSoundPath = null;
         RadioGroup soundGroupAfterReset = findViewById(R.id.soundGroup);
         if (soundGroupAfterReset != null) {
             soundGroupAfterReset.check(R.id.soundCashRegister);

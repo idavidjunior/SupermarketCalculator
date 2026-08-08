@@ -971,3 +971,31 @@ src/com/yourdomain/yourapp/MainActivity.java
 3. Run `.\build.ps1` until it succeeds
 4. `adb install -r` and verify on device
 5. Iterate: feature → build → install → test → fix
+
+## Sound Effects (SoundPool) + Custom Sound
+
+### Built-in sounds
+
+- Put `.wav` files in `res/raw/` (lowercase names, no accents). `aapt` packages them automatically; reference as `R.raw.nome_arquivo`.
+- Load in `onCreate` with `soundPool.load(this, R.raw.x, 1)` (API 21+: `new SoundPool.Builder().setMaxStreams(5).build()`).
+- Use a constant per sound (e.g. `SOUND_COIN = 3`) and a `switch (currentSound)` in the play method to pick the sound ID. Guard `if (id != -1)`.
+
+### Custom sound picked by the user
+
+1. `Intent(Intent.ACTION_OPEN_DOCUMENT)` + `CATEGORY_OPENABLE` + `setType("audio/*")` + optional `EXTRA_MIME_TYPES` array.
+2. `startActivityForResult(intent, REQUEST_PICK_SOUND)`.
+3. In `onActivityResult`, on `RESULT_OK` read `data.getData()` (a content `Uri`), copy bytes to `getFilesDir()` (internal storage) via `ContentResolver.openInputStream`, then `soundPool.load(path, 1)`. Persist the absolute path in `SharedPreferences`.
+4. Never reference the content Uri directly after the process restarts — persist the copied internal file path instead.
+5. Get the original extension from `OpenableColumns.DISPLAY_NAME` (query the Uri with a `Cursor`).
+
+### Common pitfalls (all fixed in Supermercado Caixa v1.5.0)
+
+| Pitfall | Symptom | Fix |
+|---|---|---|
+| Selecting custom + canceling the picker leaves app stuck on "custom" with no file | Radio stuck checked, nothing plays, setting persists as custom | Keep `previousSound`; in `onActivityResult` cancel branch revert `currentSound` to `previousSound`, re-save, and re-check the correct RadioButton in the group |
+| App restored with `SOUND_CUSTOM` saved but no file (e.g. picker never returned OK) | Radio "custom" checked on boot, nothing plays | Boot guard in `onCreate`: if `currentSound == SOUND_CUSTOM && soundCustomId == -1`, revert to default and re-save |
+| Calling `soundPool.load(path)` without checking file existence | Load returns invalid id / silent failure | Check `File.exists()` before load; return `-1` otherwise |
+| Unloading on reset | `soundPool.unload` on an id that doesn't exist | Only unload when `soundCustomId != -1` |
+
+- Persist the choice with `SharedPreferences` (`KEY_SOUND` + `KEY_CUSTOM_SOUND_PATH`); restore in `onCreate` and re-check the matching RadioButton (map constant → `R.id`).
+- Versioning note: a `versionCode`/`versionName` bump (e.g. 5→6 / 1.4.0→1.5.0) plus `adb install -r` preserves user data (update, not wipe).

@@ -1126,6 +1126,69 @@
                         android:textColor="@color/textPrimary"
                         android:textSize="13sp"
                         android:paddingVertical="6dp" />
+
+                    <RadioButton
+                        android:id="@+id/soundCoin"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Moeda"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="13sp"
+                        android:paddingVertical="6dp" />
+
+                    <RadioButton
+                        android:id="@+id/soundBarcode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Leitura de código de barras"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="13sp"
+                        android:paddingVertical="6dp" />
+
+                    <RadioButton
+                        android:id="@+id/soundSuccess"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Sucesso"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="13sp"
+                        android:paddingVertical="6dp" />
+
+                    <RadioButton
+                        android:id="@+id/soundError"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Erro"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="13sp"
+                        android:paddingVertical="6dp" />
+
+                    <RadioButton
+                        android:id="@+id/soundClick"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Clique"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="13sp"
+                        android:paddingVertical="6dp" />
+
+                    <RadioButton
+                        android:id="@+id/soundDrawer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Gaveta de dinheiro"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="13sp"
+                        android:paddingVertical="6dp" />
+
+                    <RadioButton
+                        android:id="@+id/soundCustom"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Meu próprio som..."
+                        android:textColor="@color/textPrimary"
+                        android:textSize="13sp"
+                        android:paddingVertical="6dp" />
                 </RadioGroup>
 
                 <View

@@ -1,4 +1,6 @@
 *.apk
+!releases/
+!releases/*.apk
 local.properties
 debug.keystore
 release.keystore
