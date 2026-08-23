@@ -183,6 +183,11 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private File currentExpenseFile = null;
     private TextView financeBudgetLimitDisplay, financeBudgetRemaining;
 
+    // Track file being edited (for "Atualizar" functionality)
+    private File editingListFile = null;
+    private String editingListOriginalTitle = null;
+    private File editingExpenseFile = null;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -1073,6 +1078,10 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 unnamedCounter = 0;
                 budgetWarned = false;
                 budgetExceededWarned = false;
+                // Clear editing state
+                editingListFile = null;
+                editingListOriginalTitle = null;
+                editingExpenseFile = null;
                 adapter.notifyDataSetChanged();
                 updateTotal();
                 resetInput();
@@ -1156,9 +1165,19 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         btnOk.setTextSize(12f);
 
+        Button btnUpdateList = null;
+        if (editingListFile != null) {
+            btnUpdateList = new Button(this);
+            btnUpdateList.setText("Atualizar");
+            btnUpdateList.setLayoutParams(new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            btnUpdateList.setTextSize(12f);
+        }
+
         btnRow.addView(btnSaveList);
         btnRow.addView(btnSaveModel);
         btnRow.addView(btnSaveExpense);
+        if (btnUpdateList != null) btnRow.addView(btnUpdateList);
         btnRow.addView(btnOk);
 
         finishLayout.addView(receiptScroll);
@@ -1187,6 +1206,13 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             finishDialog.dismiss();
             clearCartAfterFinish();
         });
+
+        if (btnUpdateList != null) {
+            btnUpdateList.setOnClickListener(v -> {
+                finishDialog.dismiss();
+                updateExistingList(receiptContent);
+            });
+        }
 
         finishDialog.show();
     }
@@ -1225,6 +1251,10 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         unnamedCounter = 0;
         budgetWarned = false;
         budgetExceededWarned = false;
+        // Clear editing state
+        editingListFile = null;
+        editingListOriginalTitle = null;
+        editingExpenseFile = null;
         adapter.notifyDataSetChanged();
         updateTotal();
         resetInput();
@@ -1308,6 +1338,61 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         }
     }
 
+    // ==================== UPDATE EXISTING LIST ====================
+
+    private void updateExistingList(String receiptContent) {
+        if (editingListFile == null) return;
+
+        try {
+            BufferedReader br = new BufferedReader(new FileReader(editingListFile));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line);
+            br.close();
+
+            JSONObject root = new JSONObject(sb.toString());
+
+            // Update items
+            JSONArray itemsArr = new JSONArray();
+            double total = 0;
+            for (CartItem item : items) {
+                JSONObject obj = new JSONObject();
+                obj.put("name", item.getName());
+                obj.put("unitPrice", item.getUnitPrice());
+                obj.put("quantity", item.getQuantity());
+                obj.put("total", item.getTotal());
+                itemsArr.put(obj);
+                total += item.getTotal();
+            }
+            root.put("items", itemsArr);
+            root.put("total", total);
+
+            // Update title if user wants (keep original or show dialog)
+            // For now, keep the original title
+            // root.put("title", editingListOriginalTitle);
+
+            // Update date to now
+            String timestamp = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(new Date());
+            root.put("date", timestamp);
+
+            FileWriter fw = new FileWriter(editingListFile);
+            fw.write(root.toString(2));
+            fw.close();
+
+            // Clear editing state
+            editingListFile = null;
+            editingListOriginalTitle = null;
+
+            refreshSavedLists();
+            Toast.makeText(this, "Lista atualizada!", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Erro ao atualizar lista.", Toast.LENGTH_SHORT).show();
+            Log.e("SuperCalc", "Error updating list", e);
+        }
+
+        clearCartAfterFinish();
+    }
+
     // ==================== CART PERSISTENCE ====================
 
     private void saveCartState() {
@@ -1377,6 +1462,10 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 CartItem citem = new CartItem(name, price, qty);
                 mergeOrAddAtTop(citem);
             }
+
+            // Track file being edited for "Atualizar" functionality
+            editingListFile = f;
+            editingListOriginalTitle = root.optString("title", f.getName());
 
             adapter.notifyDataSetChanged();
             updateTotal();
@@ -1804,6 +1893,26 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         }
     }
 
+    private void updateExpenseFileTitle(File f, String newTitle) {
+        try {
+            BufferedReader br = new BufferedReader(new FileReader(f));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line);
+            br.close();
+
+            JSONObject root = new JSONObject(sb.toString());
+            root.put("title", newTitle);
+
+            FileWriter fw = new FileWriter(f);
+            fw.write(root.toString(2));
+            fw.close();
+        } catch (Exception e) {
+            Toast.makeText(this, "Erro ao atualizar título.", Toast.LENGTH_SHORT).show();
+            Log.e("SuperCalc", "Error updating expense title", e);
+        }
+    }
+
     private void shareSavedFile(File f) {
         try {
             BufferedReader br = new BufferedReader(new FileReader(f));
@@ -1895,6 +2004,19 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                     paidStatus.setTextColor(themeColor(R.color.finishBtn, R.color.finishBtn));
                     paidStatus.setBackgroundResource(R.drawable.bg_pendente_badge);
                 }
+
+                // Click on status badge toggles paid state
+                paidStatus.setOnClickListener(view -> {
+                    e.paid = !e.paid;
+                    paidStatus.setText(e.paid ? "Pago" : "Pendente");
+                    paidStatus.setTextColor(themeColor(e.paid ? R.color.budgetPositive : R.color.finishBtn,
+                        e.paid ? R.color.budgetPositive : R.color.finishBtn));
+                    paidStatus.setBackgroundResource(e.paid ? R.drawable.bg_pago_badge : R.drawable.bg_pendente_badge);
+                    paidCheck.setChecked(e.paid);
+                    expenseAdapter.notifyDataSetChanged();
+                    refreshExpenseTotal();
+                    saveExpensesToFile();
+                });
 
                 paidCheck.setVisibility(expensePaidMode ? View.VISIBLE : View.GONE);
                 paidCheck.setChecked(e.paid);
@@ -2310,16 +2432,25 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             .setTitle("Salvar despesas")
             .setView(container);
 
-        if (currentExpenseFile != null) {
-            String fileName = currentExpenseFile.getName();
+        if (editingExpenseFile != null) {
+            String fileName = editingExpenseFile.getName();
             builder.setPositiveButton("Atualizar \"" + fileName + "\"", (d, w) -> {
+                String newTitle = titleInput.getText().toString().trim();
+                if (!newTitle.isEmpty()) {
+                    updateExpenseFileTitle(editingExpenseFile, newTitle);
+                }
+                // Now commit: set currentExpenseFile and save
+                currentExpenseFile = editingExpenseFile;
                 saveExpensesToFile(currentExpenseFile);
+                editingExpenseFile = null;
                 Toast.makeText(this, "Arquivo atualizado: " + fileName, Toast.LENGTH_SHORT).show();
+                refreshFinanceFiles();
             });
             builder.setNegativeButton("Salvar como novo", (d, w) -> {
                 String title = titleInput.getText().toString().trim();
                 if (title.isEmpty()) title = defaultTitle;
                 saveExpensesToTimestampedFile(title);
+                editingExpenseFile = null; // Clear editing state
                 Toast.makeText(this, "Novo arquivo salvo com sucesso!", Toast.LENGTH_SHORT).show();
                 switchTab(1);
             });
@@ -2460,8 +2591,29 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
     private void saveExpensesToFile(File file) {
         try {
+            // Preserve existing metadata (title, date, prefix) if file exists
+            String existingTitle = null;
+            String existingDate = null;
+            String existingPrefix = null;
+            if (file.exists()) {
+                try {
+                    BufferedReader br = new BufferedReader(new FileReader(file));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) sb.append(line);
+                    br.close();
+                    JSONObject existing = new JSONObject(sb.toString());
+                    existingTitle = existing.optString("title", null);
+                    existingDate = existing.optString("date", null);
+                    existingPrefix = existing.optString("prefix", null);
+                } catch (Exception ignored) {}
+            }
+
             JSONObject root = new JSONObject();
             root.put("version", 1);
+            if (existingTitle != null) root.put("title", existingTitle);
+            if (existingDate != null) root.put("date", existingDate);
+            if (existingPrefix != null) root.put("prefix", existingPrefix);
             JSONArray arr = new JSONArray();
             for (ExpenseItem e : expenseItems) {
                 JSONObject obj = new JSONObject();
@@ -2485,32 +2637,14 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private void saveExpensesToFile() {
-        File dir = getListasDir();
-        try {
-            JSONObject root = new JSONObject();
-            root.put("version", 1);
-            JSONArray arr = new JSONArray();
-            for (ExpenseItem e : expenseItems) {
-                JSONObject obj = new JSONObject();
-                obj.put("description", e.description);
-                obj.put("amount", e.amount);
-                obj.put("category", e.category);
-                obj.put("date", e.date);
-                obj.put("paid", e.paid);
-                arr.put(obj);
-            }
-            root.put("expenses", arr);
-            File tmp = new File(dir, "despesas.json.tmp");
-            File target = new File(dir, "despesas.json");
-            FileWriter fw = new FileWriter(tmp);
-            fw.write(root.toString(2));
-            fw.close();
-            // Atomic replace: tmp → target
-            if (target.exists()) target.delete();
-            tmp.renameTo(target);
-        } catch (Exception e) {
-            Log.e("SuperCalc", "Error saving expenses", e);
+        File targetFile;
+        if (currentExpenseFile != null) {
+            targetFile = currentExpenseFile;
+        } else {
+            File dir = getListasDir();
+            targetFile = new File(dir, "despesas.json");
         }
+        saveExpensesToFile(targetFile);
     }
 
     private void saveExpensesToTimestampedFile(String title) {
@@ -2595,7 +2729,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private void loadExpensesFromFile(File file) {
         if (!file.exists()) return;
         exitExpensePaidMode();
-        currentExpenseFile = file;
+        editingExpenseFile = file; // Track for "Atualizar", don't set currentExpenseFile yet
         try {
             BufferedReader br = new BufferedReader(new FileReader(file));
             StringBuilder sb = new StringBuilder();
