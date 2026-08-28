@@ -53,6 +53,87 @@ import org.json.JSONObject;
 
 public class MainActivity extends Activity implements CartAdapter.CartListener {
 
+    // ==================== JSON HELPERS ====================
+
+    private static class JsonResult {
+        final JSONObject object;
+        final String error;
+
+        JsonResult(JSONObject object) {
+            this.object = object;
+            this.error = null;
+        }
+
+        JsonResult(String error) {
+            this.object = null;
+            this.error = error;
+        }
+
+        boolean isSuccess() {
+            return error == null;
+        }
+    }
+
+    private JsonResult readJsonFile(File file) {
+        try {
+            BufferedReader br = new BufferedReader(new FileReader(file));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line);
+            br.close();
+            return new JsonResult(new JSONObject(sb.toString()));
+        } catch (Exception e) {
+            return new JsonResult("Erro ao ler arquivo: " + e.getMessage());
+        }
+    }
+
+    private String writeJsonFileAtomically(File file, JSONObject root) {
+        try {
+            File tmp = new File(file.getParentFile(), file.getName() + ".tmp");
+            FileWriter fw = new FileWriter(tmp);
+            fw.write(root.toString(2));
+            fw.close();
+            if (file.exists()) file.delete();
+            if (!tmp.renameTo(file)) {
+                return "Erro ao renomear arquivo temporário";
+            }
+            return null;
+        } catch (Exception e) {
+            return "Erro ao salvar arquivo: " + e.getMessage();
+        }
+    }
+
+    private void handleError(String context, String error, Exception e) {
+        Log.e("SuperCalc", context, e);
+        Toast.makeText(this, error, Toast.LENGTH_SHORT).show();
+    }
+
+    // ==================== EDITING SESSION ====================
+
+    private static class EditingSession {
+        File file;
+        String originalTitle;
+        String type; // "market" or "expense"
+
+        EditingSession(File file, String originalTitle, String type) {
+            this.file = file;
+            this.originalTitle = originalTitle;
+            this.type = type;
+        }
+
+        void clear() {
+            file = null;
+            originalTitle = null;
+            type = null;
+        }
+
+        boolean isActive() {
+            return file != null;
+        }
+    }
+
+    private EditingSession editingSession = null;
+
     private AutoCompleteTextView productNameInput;
     private TextView priceDisplay, qtyDisplay, totalDisplay, itemCount;
     private ListView cartList;
@@ -123,6 +204,9 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private static final String KEY_CUSTOM_SOUND_PATH = "custom_sound_path";
     private static final int REQUEST_PICK_SOUND = 9001;
 
+    // Track expense file being edited (for "Atualizar" functionality)
+    private File editingExpenseFile = null;
+
     private int currentTheme = THEME_DEFAULT;
     private int currentSkin = SKIN_DEFAULT;
     private boolean showOps = false, showBack = true, showClear = true, show00 = true;
@@ -184,9 +268,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private TextView financeBudgetLimitDisplay, financeBudgetRemaining;
 
     // Track file being edited (for "Atualizar" functionality)
-    private File editingListFile = null;
-    private String editingListOriginalTitle = null;
-    private File editingExpenseFile = null;
+    // Replaced by editingSession
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -1079,8 +1161,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 budgetWarned = false;
                 budgetExceededWarned = false;
                 // Clear editing state
-                editingListFile = null;
-                editingListOriginalTitle = null;
+                clearEditingSession();
                 editingExpenseFile = null;
                 adapter.notifyDataSetChanged();
                 updateTotal();
@@ -1166,7 +1247,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         btnOk.setTextSize(12f);
 
         Button btnUpdateList = null;
-        if (editingListFile != null) {
+        if (editingSession != null && editingSession.isActive()) {
             btnUpdateList = new Button(this);
             btnUpdateList.setText("Atualizar");
             btnUpdateList.setLayoutParams(new LinearLayout.LayoutParams(0,
@@ -1210,7 +1291,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         if (btnUpdateList != null) {
             btnUpdateList.setOnClickListener(v -> {
                 finishDialog.dismiss();
-                updateExistingList(receiptContent);
+                showUpdateDialogWithTitleOption();
             });
         }
 
@@ -1237,7 +1318,6 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             if (prefix.equals("modelo")) {
                 saveStructuredList("modelo", title);
             } else {
-                saveListToFile(receiptContent);
                 saveStructuredList(prefix, title);
             }
             clearCartAfterFinish();
@@ -1252,8 +1332,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         budgetWarned = false;
         budgetExceededWarned = false;
         // Clear editing state
-        editingListFile = null;
-        editingListOriginalTitle = null;
+        clearEditingSession();
         editingExpenseFile = null;
         adapter.notifyDataSetChanged();
         updateTotal();
@@ -1278,23 +1357,6 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         refreshExpenseTotal();
         refreshSavedLists();
         Toast.makeText(this, "Adicionado às Despesas Financeiras", Toast.LENGTH_LONG).show();
-    }
-
-    private void saveListToFile(String content) {
-        File dir = getListasDir();
-
-        String timestamp = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(new Date());
-        File file = new File(dir, "lista_compras_" + timestamp + ".txt");
-
-        try {
-            FileOutputStream fos = new FileOutputStream(file);
-            fos.write(content.getBytes("UTF-8"));
-            fos.close();
-            Toast.makeText(this, getString(R.string.save_success), Toast.LENGTH_LONG).show();
-        } catch (IOException e) {
-            Toast.makeText(this, R.string.save_error, Toast.LENGTH_SHORT).show();
-        }
-        refreshSavedLists();
     }
 
     // ==================== STRUCTURED JSON SAVE/LOAD ====================
@@ -1324,35 +1386,80 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             root.put("total", total);
 
             File file = new File(dir, prefix + "_" + timestamp + ".json");
-            FileWriter fw = new FileWriter(file);
-            fw.write(root.toString(2));
-            fw.close();
+            String error = writeJsonFileAtomically(file, root);
+            if (error != null) {
+                handleError("Error saving structured list", error, new Exception(error));
+                return;
+            }
 
             if (prefix.equals("modelo")) {
                 Toast.makeText(this, R.string.template_saved, Toast.LENGTH_LONG).show();
             }
             refreshSavedLists();
         } catch (Exception e) {
-            Toast.makeText(this, R.string.save_error, Toast.LENGTH_SHORT).show();
-            Log.e("SuperCalc", "Error saving structured list", e);
+            handleError("Error saving structured list", "Erro ao salvar lista", e);
         }
     }
 
     // ==================== UPDATE EXISTING LIST ====================
 
-    private void updateExistingList(String receiptContent) {
-        if (editingListFile == null) return;
+    private void showUpdateDialogWithTitleOption() {
+        if (editingSession == null || !editingSession.isActive()) return;
 
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Atualizar lista");
+
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(40, 20, 40, 20);
+
+        TextView label = new TextView(this);
+        label.setText("Título (deixe vazio para manter o original):");
+        label.setTextSize(14);
+        container.addView(label);
+
+        EditText input = new EditText(this);
+        input.setHint(editingSession.originalTitle);
+        input.setPadding(40, 20, 40, 20);
+        container.addView(input);
+
+        builder.setView(container);
+
+        builder.setPositiveButton("Atualizar", (d, w) -> {
+            String newTitle = input.getText().toString().trim();
+            updateExistingList(newTitle.isEmpty() ? editingSession.originalTitle : newTitle);
+        });
+        builder.setNegativeButton("Salvar como novo", (d, w) -> {
+            String title = input.getText().toString().trim();
+            if (title.isEmpty()) title = editingSession.originalTitle + " (cópia)";
+            saveStructuredList("lista_compras", title);
+            clearEditingSession();
+        });
+        builder.setNeutralButton("Cancelar", null);
+        builder.show();
+    }
+
+    private void clearEditingSession() {
+        if (editingSession != null) {
+            editingSession.clear();
+        }
+    }
+
+    private void updateExistingList(String title) {
+        if (editingSession == null || !editingSession.isActive()) return;
+
+        File file = editingSession.file;
+
+        JsonResult result = readJsonFile(file);
+        if (!result.isSuccess()) {
+            handleError("Error updating list", result.error, new Exception(result.error));
+            return;
+        }
+
+        JSONObject root = result.object;
+
+        // Update items
         try {
-            BufferedReader br = new BufferedReader(new FileReader(editingListFile));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) sb.append(line);
-            br.close();
-
-            JSONObject root = new JSONObject(sb.toString());
-
-            // Update items
             JSONArray itemsArr = new JSONArray();
             double total = 0;
             for (CartItem item : items) {
@@ -1366,30 +1473,25 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             }
             root.put("items", itemsArr);
             root.put("total", total);
-
-            // Update title if user wants (keep original or show dialog)
-            // For now, keep the original title
-            // root.put("title", editingListOriginalTitle);
+            root.put("title", title);
 
             // Update date to now
             String timestamp = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(new Date());
             root.put("date", timestamp);
-
-            FileWriter fw = new FileWriter(editingListFile);
-            fw.write(root.toString(2));
-            fw.close();
-
-            // Clear editing state
-            editingListFile = null;
-            editingListOriginalTitle = null;
-
-            refreshSavedLists();
-            Toast.makeText(this, "Lista atualizada!", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Toast.makeText(this, "Erro ao atualizar lista.", Toast.LENGTH_SHORT).show();
-            Log.e("SuperCalc", "Error updating list", e);
+            handleError("Error updating list", "Erro ao preparar dados", e);
+            return;
         }
 
+        String error = writeJsonFileAtomically(file, root);
+        if (error != null) {
+            handleError("Error updating list", error, new Exception(error));
+            return;
+        }
+
+        clearEditingSession();
+        refreshSavedLists();
+        Toast.makeText(this, "Lista atualizada!", Toast.LENGTH_SHORT).show();
         clearCartAfterFinish();
     }
 
@@ -1442,39 +1544,37 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private void loadStructuredListIntoCart(File f) {
-        try {
-            BufferedReader br = new BufferedReader(new FileReader(f));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                sb.append(line);
-            }
-            br.close();
-
-            JSONObject root = new JSONObject(sb.toString());
-            JSONArray itemsArr = root.getJSONArray("items");
-
-            for (int i = 0; i < itemsArr.length(); i++) {
-                JSONObject obj = itemsArr.getJSONObject(i);
-                String name = obj.getString("name");
-                double price = obj.getDouble("unitPrice");
-                int qty = obj.getInt("quantity");
-                CartItem citem = new CartItem(name, price, qty);
-                mergeOrAddAtTop(citem);
-            }
-
-            // Track file being edited for "Atualizar" functionality
-            editingListFile = f;
-            editingListOriginalTitle = root.optString("title", f.getName());
-
-            adapter.notifyDataSetChanged();
-            updateTotal();
-            saveCartState();
-            Toast.makeText(this, R.string.template_loaded, Toast.LENGTH_LONG).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "Erro ao carregar lista.", Toast.LENGTH_SHORT).show();
-            Log.e("SuperCalc", "Error loading structured list", e);
+        JsonResult result = readJsonFile(f);
+        if (!result.isSuccess()) {
+            handleError("Error loading structured list", result.error, new Exception(result.error));
+            return;
         }
+
+        JSONObject root = result.object;
+        JSONArray itemsArr = root.optJSONArray("items");
+        if (itemsArr == null) {
+            Toast.makeText(this, "Arquivo inválido: sem itens.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        for (int i = 0; i < itemsArr.length(); i++) {
+            JSONObject obj = itemsArr.optJSONObject(i);
+            if (obj == null) continue;
+            String name = obj.optString("name", "");
+            double price = obj.optDouble("unitPrice", 0);
+            int qty = obj.optInt("quantity", 1);
+            CartItem citem = new CartItem(name, price, qty);
+            mergeOrAddAtTop(citem);
+        }
+
+        // Track file being edited for "Atualizar" functionality
+        String title = root.optString("title", f.getName());
+        editingSession = new EditingSession(f, title, "market");
+
+        adapter.notifyDataSetChanged();
+        updateTotal();
+        saveCartState();
+        Toast.makeText(this, R.string.template_loaded, Toast.LENGTH_LONG).show();
     }
 
     private void shareReceipt(String content) {
@@ -1748,87 +1848,84 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private String extractTitleFromJson(File f) {
-        try {
-            BufferedReader br = new BufferedReader(new FileReader(f));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) sb.append(line);
-            br.close();
-            JSONObject root = new JSONObject(sb.toString());
-            if (root.has("title")) {
-                String t = root.getString("title").trim();
-                if (!t.isEmpty()) return t;
-            }
-        } catch (Exception e) {
-            // fallback
+        JsonResult result = readJsonFile(f);
+        if (!result.isSuccess()) {
+            return null;
+        }
+        JSONObject root = result.object;
+        if (root.has("title")) {
+            String t = root.optString("title", "").trim();
+            if (!t.isEmpty()) return t;
         }
         return null;
     }
 
     private void showSavedFileContent(File f) {
         if (f.getName().endsWith(".json")) {
-            try {
-                BufferedReader br = new BufferedReader(new FileReader(f));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                br.close();
+            JsonResult result = readJsonFile(f);
+            if (!result.isSuccess()) {
+                Toast.makeText(this, "Erro ao ler arquivo.", Toast.LENGTH_SHORT).show();
+                return;
+            }
 
-                JSONObject root = new JSONObject(sb.toString());
-                StringBuilder display = new StringBuilder();
-                if (root.has("title")) {
-                    String t = root.getString("title").trim();
-                    if (!t.isEmpty()) display.append(t).append("\n");
-                }
-                if (root.has("expenses")) {
-                    JSONArray expArr = root.getJSONArray("expenses");
+            JSONObject root = result.object;
+            StringBuilder display = new StringBuilder();
+            if (root.has("title")) {
+                String t = root.optString("title", "").trim();
+                if (!t.isEmpty()) display.append(t).append("\n");
+            }
+            if (root.has("expenses")) {
+                JSONArray expArr = root.optJSONArray("expenses");
+                if (expArr != null) {
                     for (int i = 0; i < expArr.length(); i++) {
-                        JSONObject obj = expArr.getJSONObject(i);
+                        JSONObject obj = expArr.optJSONObject(i);
+                        if (obj == null) continue;
                         display.append(obj.optString("description", ""))
                             .append(" [").append(obj.optString("category", ""))
-                            .append("]: ").append(currencyFormat.format(obj.getDouble("amount")))
+                            .append("]: ").append(currencyFormat.format(obj.optDouble("amount", 0)))
                             .append("\n");
                     }
-                } else {
-                    if (root.has("date")) display.append("Data: ").append(root.getString("date")).append("\n\n");
-                    JSONArray itemsArr = root.getJSONArray("items");
-                    for (int i = 0; i < itemsArr.length(); i++) {
-                        JSONObject obj = itemsArr.getJSONObject(i);
-                        display.append(obj.getString("name"))
-                            .append(" x").append(obj.getInt("quantity"))
-                            .append(" ").append(currencyFormat.format(obj.getDouble("unitPrice")))
-                            .append(" = ").append(currencyFormat.format(obj.getDouble("total")))
-                            .append("\n");
-                    }
-                    display.append("\nTOTAL: ").append(currencyFormat.format(root.getDouble("total")));
                 }
-
-                String dialogTitle = f.getName();
-                String cachedTitle = savedListTitles.get(f.getName());
-                if (cachedTitle == null) cachedTitle = expFinanceTitles.get(f.getName());
-                if (cachedTitle != null) dialogTitle = cachedTitle;
-                AlertDialog.Builder builder = new AlertDialog.Builder(this);
-                builder.setTitle(dialogTitle);
-                builder.setMessage(display.toString().trim());
-
-                final String finalCachedTitle = cachedTitle;
-                builder.setPositiveButton("Editar", (d, w) -> {
-                    if (root.has("expenses")) {
-                        loadExpensesFromFile(f);
-                        switchTab(2);
-                    } else {
-                        loadStructuredListIntoCart(f);
-                        switchTab(0);
+            } else {
+                if (root.has("date")) display.append("Data: ").append(root.optString("date", "")).append("\n\n");
+                JSONArray itemsArr = root.optJSONArray("items");
+                if (itemsArr != null) {
+                    for (int i = 0; i < itemsArr.length(); i++) {
+                        JSONObject obj = itemsArr.optJSONObject(i);
+                        if (obj == null) continue;
+                        display.append(obj.optString("name", ""))
+                            .append(" x").append(obj.optInt("quantity", 1))
+                            .append(" ").append(currencyFormat.format(obj.optDouble("unitPrice", 0)))
+                            .append(" = ").append(currencyFormat.format(obj.optDouble("total", 0)))
+                            .append("\n");
                     }
-                });
-                builder.setNeutralButton(R.string.rename_list, (d, w) -> {
-                    showRenameDialog(f, finalCachedTitle);
-                });
-                builder.setNegativeButton(R.string.ok, null);
-                builder.show();
-            } catch (Exception e) {
-                Toast.makeText(this, "Erro ao ler arquivo.", Toast.LENGTH_SHORT).show();
+                    display.append("\nTOTAL: ").append(currencyFormat.format(root.optDouble("total", 0)));
+                }
             }
+
+            String dialogTitle = f.getName();
+            String cachedTitle = savedListTitles.get(f.getName());
+            if (cachedTitle == null) cachedTitle = expFinanceTitles.get(f.getName());
+            if (cachedTitle != null) dialogTitle = cachedTitle;
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle(dialogTitle);
+            builder.setMessage(display.toString().trim());
+
+            final String finalCachedTitle = cachedTitle;
+            builder.setPositiveButton("Editar", (d, w) -> {
+                if (root.has("expenses")) {
+                    loadExpensesFromFile(f);
+                    switchTab(2);
+                } else {
+                    loadStructuredListIntoCart(f);
+                    switchTab(0);
+                }
+            });
+            builder.setNeutralButton(R.string.rename_list, (d, w) -> {
+                showRenameDialog(f, finalCachedTitle);
+            });
+            builder.setNegativeButton(R.string.ok, null);
+            builder.show();
         } else {
             try {
                 BufferedReader br = new BufferedReader(new FileReader(f));
@@ -1864,8 +1961,29 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
         builder.setPositiveButton("Salvar", (d, w) -> {
             String newTitle = input.getText().toString().trim();
-            if (newTitle.isEmpty()) return;
+            if (newTitle.isEmpty()) {
+                Toast.makeText(this, "Título não pode ser vazio.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            // Check for duplicate title
+            for (File existing : savedFiles) {
+                if (!existing.equals(f)) {
+                    String existingTitle = savedListTitles.get(existing.getName());
+                    if (existingTitle == null) existingTitle = expFinanceTitles.get(existing.getName());
+                    if (newTitle.equalsIgnoreCase(existingTitle)) {
+                        Toast.makeText(this, "Já existe uma lista com este título.", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                }
+            }
             updateJsonTitle(f, newTitle);
+            // Also offer to rename the physical file
+            new AlertDialog.Builder(this)
+                .setTitle("Renomear arquivo?")
+                .setMessage("Deseja também renomear o arquivo físico para corresponder ao novo título?")
+                .setPositiveButton("Sim", (d2, w2) -> renamePhysicalFile(f, newTitle))
+                .setNegativeButton("Não, só o título", null)
+                .show();
             refreshSavedLists();
             Toast.makeText(this, "Título atualizado!", Toast.LENGTH_SHORT).show();
         });
@@ -1873,43 +1991,64 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         builder.show();
     }
 
+    private void renamePhysicalFile(File f, String newTitle) {
+        String sanitized = newTitle.replaceAll("[^\\p{L}\\p{N}_-]", "_");
+        File dir = f.getParentFile();
+        String extension = "";
+        int dot = f.getName().lastIndexOf('.');
+        if (dot > 0) extension = f.getName().substring(dot);
+        File newFile = new File(dir, sanitized + extension);
+        if (newFile.exists()) {
+            Toast.makeText(this, "Arquivo com este nome já existe.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (f.renameTo(newFile)) {
+            refreshSavedLists();
+            Toast.makeText(this, "Arquivo renomeado.", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "Erro ao renomear arquivo.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void updateJsonTitle(File f, String newTitle) {
+        JsonResult result = readJsonFile(f);
+        if (!result.isSuccess()) {
+            handleError("Error renaming", result.error, new Exception(result.error));
+            return;
+        }
+
+        JSONObject root = result.object;
         try {
-            BufferedReader br = new BufferedReader(new FileReader(f));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) sb.append(line);
-            br.close();
-
-            JSONObject root = new JSONObject(sb.toString());
             root.put("title", newTitle);
-
-            FileWriter fw = new FileWriter(f);
-            fw.write(root.toString(2));
-            fw.close();
         } catch (Exception e) {
-            Toast.makeText(this, "Erro ao renomear.", Toast.LENGTH_SHORT).show();
-            Log.e("SuperCalc", "Error renaming", e);
+            handleError("Error renaming", "Erro ao atualizar título", e);
+            return;
+        }
+
+        String error = writeJsonFileAtomically(f, root);
+        if (error != null) {
+            handleError("Error renaming", error, new Exception(error));
         }
     }
 
     private void updateExpenseFileTitle(File f, String newTitle) {
+        JsonResult result = readJsonFile(f);
+        if (!result.isSuccess()) {
+            handleError("Error updating expense title", result.error, new Exception(result.error));
+            return;
+        }
+
+        JSONObject root = result.object;
         try {
-            BufferedReader br = new BufferedReader(new FileReader(f));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) sb.append(line);
-            br.close();
-
-            JSONObject root = new JSONObject(sb.toString());
             root.put("title", newTitle);
-
-            FileWriter fw = new FileWriter(f);
-            fw.write(root.toString(2));
-            fw.close();
         } catch (Exception e) {
-            Toast.makeText(this, "Erro ao atualizar título.", Toast.LENGTH_SHORT).show();
-            Log.e("SuperCalc", "Error updating expense title", e);
+            handleError("Error updating expense title", "Erro ao atualizar título", e);
+            return;
+        }
+
+        String error = writeJsonFileAtomically(f, root);
+        if (error != null) {
+            handleError("Error updating expense title", error, new Exception(error));
         }
     }
 
@@ -2590,25 +2729,21 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private void saveExpensesToFile(File file) {
-        try {
-            // Preserve existing metadata (title, date, prefix) if file exists
-            String existingTitle = null;
-            String existingDate = null;
-            String existingPrefix = null;
-            if (file.exists()) {
-                try {
-                    BufferedReader br = new BufferedReader(new FileReader(file));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = br.readLine()) != null) sb.append(line);
-                    br.close();
-                    JSONObject existing = new JSONObject(sb.toString());
-                    existingTitle = existing.optString("title", null);
-                    existingDate = existing.optString("date", null);
-                    existingPrefix = existing.optString("prefix", null);
-                } catch (Exception ignored) {}
+        // Preserve existing metadata (title, date, prefix) if file exists
+        String existingTitle = null;
+        String existingDate = null;
+        String existingPrefix = null;
+        if (file.exists()) {
+            JsonResult result = readJsonFile(file);
+            if (result.isSuccess()) {
+                JSONObject existing = result.object;
+                existingTitle = existing.optString("title", null);
+                existingDate = existing.optString("date", null);
+                existingPrefix = existing.optString("prefix", null);
             }
+        }
 
+        try {
             JSONObject root = new JSONObject();
             root.put("version", 1);
             if (existingTitle != null) root.put("title", existingTitle);
@@ -2625,14 +2760,13 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 arr.put(obj);
             }
             root.put("expenses", arr);
-            File tmp = new File(file.getParentFile(), file.getName() + ".tmp");
-            FileWriter fw = new FileWriter(tmp);
-            fw.write(root.toString(2));
-            fw.close();
-            if (file.exists()) file.delete();
-            tmp.renameTo(file);
+
+            String error = writeJsonFileAtomically(file, root);
+            if (error != null) {
+                handleError("Error saving expenses to " + file.getName(), error, new Exception(error));
+            }
         } catch (Exception e) {
-            Log.e("SuperCalc", "Error saving expenses to " + file.getName(), e);
+            handleError("Error saving expenses", "Erro ao preparar dados", e);
         }
     }
 
@@ -2668,12 +2802,14 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             }
             root.put("expenses", arr);
             File file = new File(dir, "despesas_" + timestamp + ".json");
-            FileWriter fw = new FileWriter(file);
-            fw.write(root.toString(2));
-            fw.close();
+            String error = writeJsonFileAtomically(file, root);
+            if (error != null) {
+                handleError("Error saving timestamped expenses", error, new Exception(error));
+                return;
+            }
             refreshFinanceFiles();
         } catch (Exception e) {
-            Log.e("SuperCalc", "Error saving timestamped expenses", e);
+            handleError("Error saving timestamped expenses", "Erro ao salvar despesas", e);
         }
     }
 
@@ -2730,32 +2866,34 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         if (!file.exists()) return;
         exitExpensePaidMode();
         editingExpenseFile = file; // Track for "Atualizar", don't set currentExpenseFile yet
-        try {
-            BufferedReader br = new BufferedReader(new FileReader(file));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) sb.append(line);
-            br.close();
-            JSONObject root = new JSONObject(sb.toString());
-            JSONArray arr = root.getJSONArray("expenses");
-            expenseItems.clear();
-            for (int i = 0; i < arr.length(); i++) {
-                JSONObject obj = arr.getJSONObject(i);
-                ExpenseItem e = new ExpenseItem(
-                    obj.getString("description"),
-                    obj.getDouble("amount"),
-                    obj.getString("category")
-                );
-                e.date = obj.optLong("date", System.currentTimeMillis());
-                e.paid = obj.optBoolean("paid", false);
-                expenseItems.add(e);
-            }
-            editingExpensePosition = -1;
-            expenseAdapter.notifyDataSetChanged();
-            refreshExpenseTotal();
-        } catch (Exception e) {
-            Log.e("SuperCalc", "Error loading expenses", e);
+        JsonResult result = readJsonFile(file);
+        if (!result.isSuccess()) {
+            handleError("Error loading expenses", result.error, new Exception(result.error));
+            return;
         }
+
+        JSONObject root = result.object;
+        JSONArray arr = root.optJSONArray("expenses");
+        if (arr == null) {
+            Toast.makeText(this, "Arquivo de despesas inválido.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        expenseItems.clear();
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject obj = arr.optJSONObject(i);
+            if (obj == null) continue;
+            ExpenseItem e = new ExpenseItem(
+                obj.optString("description", ""),
+                obj.optDouble("amount", 0),
+                obj.optString("category", "")
+            );
+            e.date = obj.optLong("date", System.currentTimeMillis());
+            e.paid = obj.optBoolean("paid", false);
+            expenseItems.add(e);
+        }
+        editingExpensePosition = -1;
+        expenseAdapter.notifyDataSetChanged();
+        refreshExpenseTotal();
     }
 
     // ==================== SETTINGS ====================

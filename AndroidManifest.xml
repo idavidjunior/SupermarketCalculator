@@ -28,5 +28,9 @@
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".CalcSimplesActivity"
+            android:label="Calculadora Simples"
+            android:exported="true" />
     </application>
 </manifest>

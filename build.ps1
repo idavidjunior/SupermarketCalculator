@@ -41,7 +41,8 @@ New-Item -ItemType Directory -Path "$BuildDir\classes", "$BuildDir\dex" -Force |
 # Response file for javac — use relative paths (no spaces in repo root) to avoid quoting issues
 $srcFiles = Get-ChildItem -Recurse -Path src -Filter "*.java" | ForEach-Object { $_.FullName }
 $srcFileList = Join-Path $FullBuildDir "sources.txt"
-$rel = $srcFiles | ForEach-Object { $_.Substring($pwd.Path.Length + 1) }
+$rel = $srcFiles | ForEach-Object { $_.FullName.Substring($pwd.Path.Length).TrimStart('\','/') }
+if (-not $rel) { $rel = @() }
 [System.IO.File]::WriteAllLines($srcFileList, $rel, (New-Object System.Text.UTF8Encoding($false)))
 
 function exec($desc, $scriptblock) {
@@ -51,7 +52,7 @@ function exec($desc, $scriptblock) {
 }
 
 exec "Generate R.java" { & "$BT\aapt.exe" package -f -m -M AndroidManifest.xml -S res -I $PLATFORM -J src }
-exec "Compile Java" { & javac -encoding UTF-8 -cp $PLATFORM -d "$BuildDir\classes" "@$srcFileList" }
+exec "Compile Java" { & javac -encoding UTF-8 -cp "$PLATFORM;$env:ANDROID_HOME\extras\androidx\appcompat\appcompat.jar;$env:ANDROID_HOME\extras\androidx\core\core.jar;$env:ANDROID_HOME\extras\androidx\fragment\fragment.jar" -d "$BuildDir\classes" "@$srcFileList" }
 exec "Create JAR" { & jar cf "$BuildDir\classes.jar" -C "$BuildDir\classes" . }
 exec "Convert to DEX" { cmd /c "`"$BT\d8.bat`" --lib `"$PLATFORM`" --output `"$FullBuildDir\dex`" `"$FullBuildDir\classes.jar`"" }
 exec "Package APK" { & "$BT\aapt.exe" package -f -M AndroidManifest.xml -S res -I $PLATFORM -F "$BuildDir\$ApkName-unsigned.apk" }

@@ -6,4 +6,5 @@ debug.keystore
 release.keystore
 build/
 gen/
-bin/
+bin/__pycache__/
+*.pyc
