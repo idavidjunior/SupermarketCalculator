@@ -39,10 +39,15 @@ if (Test-Path $BuildDir) { Remove-Item -Recurse -Force $BuildDir }
 New-Item -ItemType Directory -Path "$BuildDir\classes", "$BuildDir\dex" -Force | Out-Null
 
 # Response file for javac — use relative paths (no spaces in repo root) to avoid quoting issues
-$srcFiles = Get-ChildItem -Recurse -Path src -Filter "*.java" | ForEach-Object { $_.FullName }
+$srcFiles = Get-ChildItem -Recurse -Path src -Filter "*.java" |
+    Where-Object { $_.Name -ne "CalcSimplesActivity.java" } |
+    ForEach-Object { $_.FullName }
 $srcFileList = Join-Path $FullBuildDir "sources.txt"
-$rel = $srcFiles | ForEach-Object { $_.FullName.Substring($pwd.Path.Length).TrimStart('\','/') }
-if (-not $rel) { $rel = @() }
+$projDir = $PSScriptRoot
+$rel = @()
+foreach ($f in $srcFiles) {
+    $rel += $f.Substring($projDir.Length).TrimStart('\','/')
+}
 [System.IO.File]::WriteAllLines($srcFileList, $rel, (New-Object System.Text.UTF8Encoding($false)))
 
 function exec($desc, $scriptblock) {

@@ -1,4 +1,4 @@
-# SupermarketCalculator — Guia de Build e Release (v1.4.0)
+# SupermarketCalculator — Guia de Build e Release (v1.5.7)
 
 > Fonte de verdade operacional para compilar, versionar, assinar e instalar o app.
 > Atualizado em 2026-08-08.
@@ -34,6 +34,7 @@ Histórico de versões:
 | 1.2.0 | 3 | 2026-07-31 | Versão anterior (assinatura diferente) |
 | 1.3.0 | 4 | 2026-08-08 | Persistência do carrinho ao bloquear tela + build.ps1 resiliente |
 | 1.4.0 | 5 | 2026-08-08 | Som no botão Adicionar (3 opções: caixa registradora, pop, bip) |
+| 1.5.7 | 13 | 2026-08-08 | Fix 5 bugs MainActivity + opções "Salvar como novo"/"Atualizar" ao editar lista |
 
 ## Assinatura (release keystore)
 

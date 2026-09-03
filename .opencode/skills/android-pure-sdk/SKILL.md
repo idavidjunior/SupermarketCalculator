@@ -901,6 +901,7 @@ private void loadSettings() {
 7. **`setAlpha(0)` over `setVisibility(GONE)`** — Preserves grid layout in numpad
 8. **`apply()` over `commit()`** — Asynchronous write, returns immediately (sufficient for small configs)
 9. **Persist cart state in SharedPreferences** — In-memory `ArrayList<CartItem>` is destroyed when the Activity is recreated (screen lock, config change, process kill). Save the cart as JSON in prefs on EVERY mutation (add, edit, increment, decrement, remove, clear) plus `onPause()` as safety net; restore in `onCreate` after adapter setup.
+10. **Edit-save dual mode (v1.5.7)** — Track an active `EditingSession(file, title, type)` created when a saved list is loaded into the cart. In `finishPurchase()`'s dialog, when `editingSession.isActive()` show BOTH "Salvar como novo" (calls `showSaveTitleDialog`) and "Atualizar" (calls `showUpdateDialogWithTitleOption`), and hide the plain "Salvar" button. For a brand-new list, show only "Salvar". Keeps UX simple: no extra intermediary dialog; both save options appear directly at finish.
 
 ## Cart Persistence Pattern (survives screen lock / process death)
 ```java

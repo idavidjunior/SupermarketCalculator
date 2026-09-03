@@ -1247,15 +1247,23 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         btnOk.setTextSize(12f);
 
         Button btnUpdateList = null;
+        Button btnSaveAsNew = null;
         if (editingSession != null && editingSession.isActive()) {
             btnUpdateList = new Button(this);
             btnUpdateList.setText("Atualizar");
             btnUpdateList.setLayoutParams(new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             btnUpdateList.setTextSize(12f);
+
+            btnSaveAsNew = new Button(this);
+            btnSaveAsNew.setText("Salvar como novo");
+            btnSaveAsNew.setLayoutParams(new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            btnSaveAsNew.setTextSize(12f);
         }
 
-        btnRow.addView(btnSaveList);
+        if (btnSaveAsNew != null) btnRow.addView(btnSaveAsNew);
+        else btnRow.addView(btnSaveList);
         btnRow.addView(btnSaveModel);
         btnRow.addView(btnSaveExpense);
         if (btnUpdateList != null) btnRow.addView(btnUpdateList);
@@ -1292,6 +1300,12 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             btnUpdateList.setOnClickListener(v -> {
                 finishDialog.dismiss();
                 showUpdateDialogWithTitleOption();
+            });
+        }
+        if (btnSaveAsNew != null) {
+            btnSaveAsNew.setOnClickListener(v -> {
+                finishDialog.dismiss();
+                showSaveTitleDialog(receiptContent, "lista_compras");
             });
         }
 
@@ -2775,8 +2789,10 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         if (currentExpenseFile != null) {
             targetFile = currentExpenseFile;
         } else {
+            String timestamp = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(new Date());
             File dir = getListasDir();
-            targetFile = new File(dir, "despesas.json");
+            targetFile = new File(dir, "despesas_" + timestamp + ".json");
+            currentExpenseFile = targetFile;
         }
         saveExpensesToFile(targetFile);
     }
@@ -2859,7 +2875,12 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private void loadExpensesFromFile() {
-        loadExpensesFromFile(new File(getListasDir(), "despesas.json"));
+        File dir = getListasDir();
+        File[] files = dir.listFiles((d, name) -> name.startsWith("despesas_") && name.endsWith(".json"));
+        if (files != null && files.length > 0) {
+            Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+            loadExpensesFromFile(files[0]);
+        }
     }
 
     private void loadExpensesFromFile(File file) {
@@ -3263,8 +3284,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private void setButtonHidden(Button btn, boolean hidden) {
-        btn.setVisibility(View.VISIBLE);
-        btn.setAlpha(hidden ? 0f : 1f);
+        btn.setVisibility(hidden ? View.GONE : View.VISIBLE);
         btn.setEnabled(!hidden);
         btn.setClickable(!hidden);
     }
@@ -3319,6 +3339,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     public void onNameChanged(int position, String name) {
         if (position >= 0 && position < items.size()) {
             items.get(position).setName(name);
+            updateTotal();
             saveCartState();
         }
     }

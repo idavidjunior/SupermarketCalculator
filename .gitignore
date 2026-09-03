@@ -8,3 +8,4 @@ build/
 gen/
 bin/__pycache__/
 *.pyc
+__pycache__/
