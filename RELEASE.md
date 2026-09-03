@@ -36,6 +36,7 @@ Histórico de versões:
 | 1.4.0 | 5 | 2026-08-08 | Som no botão Adicionar (3 opções: caixa registradora, pop, bip) |
 | 1.5.7 | 13 | 2026-08-08 | Fix 5 bugs MainActivity + opções "Salvar como novo"/"Atualizar" ao editar lista |
 | 1.5.8 | 14 | 2026-09-03 | Nova 5ª aba "Simples": calculadora comum (+, −, ×, ÷, %, vírgula, limpar, apagar) |
+| 1.5.9 | 15 | 2026-09-03 | Aba Simples: visor com formatação brasileira automática (1.000, 10,50) mantendo cálculo correto |
 
 ## Assinatura (release keystore)
 

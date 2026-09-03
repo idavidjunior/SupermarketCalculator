@@ -689,7 +689,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         View.OnClickListener eq = v -> {
             if (!scOp.isEmpty()) {
                 double r = compute(scAccum, scCurrent, scOp);
-                scExpression.setText(scAccum + " " + scOp + " " + scCurrent + " =");
+                scExpression.setText(formatDisplay(scAccum) + " " + scOp + " " + formatDisplay(scCurrent) + " =");
                 scCurrent = formatNumber(r);
                 scOp = "";
                 scAccum = "";
@@ -704,6 +704,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             if (scStartNewNumber && scLastWasEquals) return;
             if (scCurrent.length() > 0) {
                 scCurrent = scCurrent.substring(0, scCurrent.length() - 1);
+                if (scCurrent.endsWith(".")) scCurrent = scCurrent.substring(0, scCurrent.length() - 1);
                 if (scCurrent.isEmpty() || scCurrent.equals("-")) scCurrent = "0";
                 updateScDisplay();
             }
@@ -748,16 +749,20 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private void updateScDisplay() {
-        scDisplay.setText(scCurrent);
+        scDisplay.setText(formatDisplay(scCurrent));
     }
 
     private void updateScExpression() {
-        scExpression.setText(scAccum + " " + scOp);
+        scExpression.setText(formatDisplay(scAccum) + " " + scOp);
     }
 
     private double parse(String s) {
         if (s.isEmpty()) return 0;
-        return Double.parseDouble(s.replace(",", "."));
+        try {
+            return Double.parseDouble(s.replace(",", "."));
+        } catch (NumberFormatException e) {
+            return Double.NaN;
+        }
     }
 
     private String formatNumber(double v) {
@@ -766,7 +771,36 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             long l = (long) v;
             return String.valueOf(l);
         }
-        return String.valueOf(v).replace(".", ",");
+        return String.valueOf(v);
+    }
+
+    private String formatDisplay(String raw) {
+        if (raw == null || raw.isEmpty()) return "0";
+        if (raw.equals("Erro")) return "Erro";
+        boolean neg = raw.startsWith("-");
+        String body = neg ? raw.substring(1) : raw;
+        String intPart = body;
+        String fracPart = "";
+        int dot = body.indexOf('.');
+        boolean hasFrac = dot >= 0;
+        if (hasFrac) {
+            intPart = body.substring(0, dot);
+            fracPart = body.substring(dot + 1);
+        }
+        StringBuilder intSb = new StringBuilder();
+        int n = intPart.length();
+        for (int i = 0; i < n; i++) {
+            if (i > 0 && (n - i) % 3 == 0) intSb.append('.');
+            intSb.append(intPart.charAt(i));
+        }
+        String out = (neg ? "-" : "") + intSb.toString();
+        if (hasFrac) {
+            StringBuilder f = new StringBuilder(fracPart);
+            while (f.length() < 2) f.append('0');
+            if (f.length() > 2) f.setLength(2);
+            out = out + "," + f.toString();
+        }
+        return out;
     }
 
     private double compute(String a, String b, String op) {
