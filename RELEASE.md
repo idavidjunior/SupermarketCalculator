@@ -35,6 +35,7 @@ Histórico de versões:
 | 1.3.0 | 4 | 2026-08-08 | Persistência do carrinho ao bloquear tela + build.ps1 resiliente |
 | 1.4.0 | 5 | 2026-08-08 | Som no botão Adicionar (3 opções: caixa registradora, pop, bip) |
 | 1.5.7 | 13 | 2026-08-08 | Fix 5 bugs MainActivity + opções "Salvar como novo"/"Atualizar" ao editar lista |
+| 1.5.8 | 14 | 2026-09-03 | Nova 5ª aba "Simples": calculadora comum (+, −, ×, ÷, %, vírgula, limpar, apagar) |
 
 ## Assinatura (release keystore)
 

@@ -157,6 +157,16 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private ScrollView settingsPage;
     private TextView tabCalculator, tabSavedLists, tabSettings;
 
+    // Calculadora Simples
+    private TextView tabSimpleCalc;
+    private LinearLayout simpleCalcPage;
+    private TextView scDisplay, scExpression;
+    private String scCurrent = "0";
+    private String scAccum = "";
+    private String scOp = "";
+    private boolean scStartNewNumber = true;
+    private boolean scLastWasEquals = false;
+
     // Saved files cache
     private List<File> savedFiles = new ArrayList<>();
     private java.util.Map<String, String> savedListTitles = new java.util.HashMap<>();
@@ -304,6 +314,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         initViews();
         setupTabs();
         setupCalculator();
+        setupSimpleCalc();
         setupNumpad();
         setupListasSubTabs();
         setupExpenses();
@@ -351,10 +362,12 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         calculatorPage = findViewById(R.id.calculatorPage);
         savedListsPage = findViewById(R.id.savedListsPage);
         settingsPage = findViewById(R.id.settingsPage);
+        simpleCalcPage = findViewById(R.id.simpleCalcPage);
 
         tabCalculator = findViewById(R.id.tabCalculator);
         tabSavedLists = findViewById(R.id.tabSavedLists);
         tabSettings = findViewById(R.id.tabSettings);
+        tabSimpleCalc = findViewById(R.id.tabSimpleCalc);
 
         opsRow = findViewById(R.id.opsRow);
         btnNBack = findViewById(R.id.btnNBack);
@@ -434,6 +447,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         tabExpenses.setOnClickListener(v -> switchTab(1));
         tabSavedLists.setOnClickListener(v -> switchTab(2));
         tabSettings.setOnClickListener(v -> switchTab(3));
+        tabSimpleCalc.setOnClickListener(v -> switchTab(4));
         switchTab(0);
     }
 
@@ -442,16 +456,19 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         expensesPage.setVisibility(index == 1 ? View.VISIBLE : View.GONE);
         savedListsPage.setVisibility(index == 2 ? View.VISIBLE : View.GONE);
         settingsPage.setVisibility(index == 3 ? View.VISIBLE : View.GONE);
+        simpleCalcPage.setVisibility(index == 4 ? View.VISIBLE : View.GONE);
 
         tabCalculator.setAlpha(index == 0 ? 1f : 0.6f);
         tabExpenses.setAlpha(index == 1 ? 1f : 0.6f);
         tabSavedLists.setAlpha(index == 2 ? 1f : 0.6f);
         tabSettings.setAlpha(index == 3 ? 1f : 0.6f);
+        tabSimpleCalc.setAlpha(index == 4 ? 1f : 0.6f);
 
         tabCalculator.setBackgroundResource(index == 0 ? R.drawable.bg_tab_active : 0);
         tabExpenses.setBackgroundResource(index == 1 ? R.drawable.bg_tab_active : 0);
         tabSavedLists.setBackgroundResource(index == 2 ? R.drawable.bg_tab_active : 0);
         tabSettings.setBackgroundResource(index == 3 ? R.drawable.bg_tab_active : 0);
+        tabSimpleCalc.setBackgroundResource(index == 4 ? R.drawable.bg_tab_active : 0);
 
         if (index == 1) {
             refreshExpensesMarket();
@@ -606,6 +623,162 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 android.R.layout.simple_dropdown_item_1line, allGroceryItems);
         productNameInput.setAdapter(groceryAdapter);
         productNameInput.setDropDownWidth(ViewGroup.LayoutParams.MATCH_PARENT);
+    }
+
+    // ==================== CALCULADORA SIMPLES ====================
+
+    private void setupSimpleCalc() {
+        scDisplay = findViewById(R.id.scDisplay);
+        scExpression = findViewById(R.id.scExpression);
+
+        View.OnClickListener num = v -> {
+            if (scStartNewNumber || scLastWasEquals) {
+                if (scLastWasEquals) resetCalc();
+                scCurrent = "";
+                scStartNewNumber = false;
+            }
+            scLastWasEquals = false;
+            String d = ((Button) v).getText().toString();
+            if (scCurrent.equals("0")) {
+                scCurrent = d.equals("0") ? "0" : d;
+            } else {
+                scCurrent = scCurrent + d;
+            }
+            updateScDisplay();
+        };
+
+        View.OnClickListener dot = v -> {
+            if (scStartNewNumber || scLastWasEquals) {
+                if (scLastWasEquals) resetCalc();
+                scCurrent = "0";
+                scStartNewNumber = false;
+            }
+            scLastWasEquals = false;
+            if (!scCurrent.contains(".")) {
+                scCurrent = scCurrent + ".";
+                updateScDisplay();
+            }
+        };
+
+        View.OnClickListener op = v -> {
+            String o = ((Button) v).getText().toString();
+            if (scLastWasEquals) {
+                scOp = o;
+                scAccum = scCurrent;
+                scStartNewNumber = true;
+                scLastWasEquals = false;
+                updateScExpression();
+                return;
+            }
+            if (!scOp.isEmpty()) {
+                double r = compute(scAccum, scCurrent, scOp);
+                scAccum = formatNumber(r);
+                scCurrent = scAccum;
+                scOp = o;
+                scStartNewNumber = true;
+                updateScDisplay();
+                updateScExpression();
+            } else {
+                scAccum = scCurrent;
+                scOp = o;
+                scStartNewNumber = true;
+                updateScExpression();
+            }
+        };
+
+        View.OnClickListener eq = v -> {
+            if (!scOp.isEmpty()) {
+                double r = compute(scAccum, scCurrent, scOp);
+                scExpression.setText(scAccum + " " + scOp + " " + scCurrent + " =");
+                scCurrent = formatNumber(r);
+                scOp = "";
+                scAccum = "";
+                scStartNewNumber = true;
+                scLastWasEquals = true;
+                updateScDisplay();
+            }
+        };
+
+        View.OnClickListener clear = v -> resetCalc();
+        View.OnClickListener back = v -> {
+            if (scStartNewNumber && scLastWasEquals) return;
+            if (scCurrent.length() > 0) {
+                scCurrent = scCurrent.substring(0, scCurrent.length() - 1);
+                if (scCurrent.isEmpty() || scCurrent.equals("-")) scCurrent = "0";
+                updateScDisplay();
+            }
+        };
+        View.OnClickListener percent = v -> {
+            double val = parse(scCurrent);
+            scCurrent = formatNumber(val / 100.0);
+            updateScDisplay();
+        };
+
+        findViewById(R.id.sc0).setOnClickListener(num);
+        findViewById(R.id.sc1).setOnClickListener(num);
+        findViewById(R.id.sc2).setOnClickListener(num);
+        findViewById(R.id.sc3).setOnClickListener(num);
+        findViewById(R.id.sc4).setOnClickListener(num);
+        findViewById(R.id.sc5).setOnClickListener(num);
+        findViewById(R.id.sc6).setOnClickListener(num);
+        findViewById(R.id.sc7).setOnClickListener(num);
+        findViewById(R.id.sc8).setOnClickListener(num);
+        findViewById(R.id.sc9).setOnClickListener(num);
+        findViewById(R.id.scDot).setOnClickListener(dot);
+        findViewById(R.id.scAdd).setOnClickListener(op);
+        findViewById(R.id.scSub).setOnClickListener(op);
+        findViewById(R.id.scMul).setOnClickListener(op);
+        findViewById(R.id.scDiv).setOnClickListener(op);
+        findViewById(R.id.scEq).setOnClickListener(eq);
+        findViewById(R.id.scClear).setOnClickListener(clear);
+        findViewById(R.id.scBack).setOnClickListener(back);
+        findViewById(R.id.scPercent).setOnClickListener(percent);
+
+        updateScDisplay();
+    }
+
+    private void resetCalc() {
+        scCurrent = "0";
+        scAccum = "";
+        scOp = "";
+        scStartNewNumber = true;
+        scLastWasEquals = false;
+        scExpression.setText("");
+        updateScDisplay();
+    }
+
+    private void updateScDisplay() {
+        scDisplay.setText(scCurrent);
+    }
+
+    private void updateScExpression() {
+        scExpression.setText(scAccum + " " + scOp);
+    }
+
+    private double parse(String s) {
+        if (s.isEmpty()) return 0;
+        return Double.parseDouble(s.replace(",", "."));
+    }
+
+    private String formatNumber(double v) {
+        if (Double.isNaN(v) || Double.isInfinite(v)) return "Erro";
+        if (v == Math.floor(v) && !Double.isInfinite(v)) {
+            long l = (long) v;
+            return String.valueOf(l);
+        }
+        return String.valueOf(v).replace(".", ",");
+    }
+
+    private double compute(String a, String b, String op) {
+        double x = parse(a);
+        double y = parse(b);
+        switch (op) {
+            case "+": return x + y;
+            case "−": return x - y;
+            case "×": return x * y;
+            case "÷": return y == 0 ? Double.NaN : x / y;
+            default: return y;
+        }
     }
 
     // ==================== NUMPAD ====================

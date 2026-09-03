@@ -98,6 +98,19 @@
             android:alpha="0.6"
             android:clickable="true"
             android:focusable="true" />
+
+        <TextView
+            android:id="@+id/tabSimpleCalc"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="Simples"
+            android:textColor="@color/headerText"
+            android:textSize="12sp"
+            android:alpha="0.6"
+            android:clickable="true"
+            android:focusable="true" />
     </LinearLayout>
 
     <FrameLayout
@@ -1231,5 +1244,110 @@
                     android:lineSpacingExtra="4dp" />
             </LinearLayout>
         </ScrollView>
+
+        <!-- PAGE 4: Calculadora Simples -->
+        <LinearLayout
+            android:id="@+id/simpleCalcPage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:background="@color/background"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="14dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="8dp"
+                android:background="@color/primaryDark">
+
+                <TextView
+                    android:id="@+id/scExpression"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="@color/headerText"
+                    android:textSize="15sp"
+                    android:alpha="0.85"
+                    android:gravity="end"
+                    android:minHeight="20dp" />
+
+                <TextView
+                    android:id="@+id/scDisplay"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textColor="@color/headerText"
+                    android:textSize="40sp"
+                    android:textStyle="bold"
+                    android:gravity="end"
+                    android:maxLines="1"
+                    android:minHeight="56dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:padding="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal">
+                    <Button android:id="@+id/scClear" android:text="C" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_action" android:textSize="18sp" android:textColor="@color/removeBtn" android:textStyle="bold" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/scBack" android:text="⌫" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_action" android:textSize="18sp" android:textColor="@color/clearBtn" android:textStyle="bold" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/scPercent" android:text="%" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="18sp" android:textColor="@color/primary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/scDiv" android:text="÷" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/primary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal">
+                    <Button android:id="@+id/sc7" android:text="7" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/textPrimary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/sc8" android:text="8" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/textPrimary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/sc9" android:text="9" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/textPrimary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/scMul" android:text="×" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/primary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal">
+                    <Button android:id="@+id/sc4" android:text="4" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/textPrimary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/sc5" android:text="5" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/textPrimary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/sc6" android:text="6" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/textPrimary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/scSub" android:text="−" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/primary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal">
+                    <Button android:id="@+id/sc1" android:text="1" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/textPrimary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/sc2" android:text="2" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/textPrimary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/sc3" android:text="3" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/textPrimary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/scAdd" android:text="+" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/primary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal">
+                    <Button android:id="@+id/sc0" android:text="0" android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/textPrimary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/scDot" android:text="," android:layout_weight="1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_numpad" android:textSize="22sp" android:textColor="@color/textPrimary" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                    <Button android:id="@+id/scEq" android:text="=" android:layout_weight="2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_margin="1.5dp" android:background="@drawable/btn_action" android:textSize="22sp" android:textColor="@color/addBtn" android:textStyle="bold" android:gravity="center" android:padding="0dp" android:minWidth="0dp" android:minHeight="0dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
     </FrameLayout>
 </LinearLayout>
