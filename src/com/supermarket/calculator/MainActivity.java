@@ -160,7 +160,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     // Calculadora Simples
     private TextView tabSimpleCalc;
     private LinearLayout simpleCalcPage;
-    private TextView scDisplay, scExpression;
+    private TextView scDisplay, scExpression, scResult;
     private String scCurrent = "0";
     private String scAccum = "";
     private String scOp = "";
@@ -630,6 +630,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private void setupSimpleCalc() {
         scDisplay = findViewById(R.id.scDisplay);
         scExpression = findViewById(R.id.scExpression);
+        scResult = findViewById(R.id.scResult);
 
         View.OnClickListener num = v -> {
             if (scStartNewNumber || scLastWasEquals) {
@@ -667,12 +668,13 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 scAccum = scCurrent;
                 scStartNewNumber = true;
                 scLastWasEquals = false;
+                scDisplay.setText("");
                 updateScExpression();
                 return;
             }
             if (!scOp.isEmpty()) {
-                double r = compute(scAccum, scCurrent, scOp);
-                scAccum = formatNumber(r);
+                String r = compute(scAccum, scCurrent, scOp);
+                scAccum = r;
                 scCurrent = scAccum;
                 scOp = o;
                 scStartNewNumber = true;
@@ -688,14 +690,15 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
         View.OnClickListener eq = v -> {
             if (!scOp.isEmpty()) {
-                double r = compute(scAccum, scCurrent, scOp);
+                String r = compute(scAccum, scCurrent, scOp);
                 scExpression.setText(formatDisplay(scAccum) + " " + scOp + " " + formatDisplay(scCurrent) + " =");
-                scCurrent = formatNumber(r);
+                scResult.setText(formatDisplay(r));
+                scCurrent = r;
                 scOp = "";
                 scAccum = "";
                 scStartNewNumber = true;
                 scLastWasEquals = true;
-                updateScDisplay();
+                scDisplay.setText("");
             }
         };
 
@@ -710,9 +713,42 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             }
         };
         View.OnClickListener percent = v -> {
-            double val = parse(scCurrent);
-            scCurrent = formatNumber(val / 100.0);
-            updateScDisplay();
+            java.math.BigDecimal p = toBd(scCurrent);
+            if (p == null) return;
+            if (scOp.isEmpty()) {
+                scResult.setText("");
+                scCurrent = bdToString(p.divide(java.math.BigDecimal.valueOf(100), 12, java.math.RoundingMode.HALF_UP));
+                updateScDisplay();
+            } else {
+                java.math.BigDecimal a = toBd(scAccum);
+                if (a == null) return;
+                java.math.BigDecimal r;
+                switch (scOp) {
+                    case "+":
+                        r = a.add(a.multiply(p).divide(java.math.BigDecimal.valueOf(100), 12, java.math.RoundingMode.HALF_UP));
+                        break;
+                    case "−":
+                        r = a.subtract(a.multiply(p).divide(java.math.BigDecimal.valueOf(100), 12, java.math.RoundingMode.HALF_UP));
+                        break;
+                    case "×":
+                        r = a.multiply(p).divide(java.math.BigDecimal.valueOf(100), 12, java.math.RoundingMode.HALF_UP);
+                        break;
+                    case "÷":
+                        if (p.signum() == 0) { scCurrent = "Erro"; updateScDisplay(); return; }
+                        r = a.multiply(java.math.BigDecimal.valueOf(100)).divide(p, 12, java.math.RoundingMode.HALF_UP);
+                        break;
+                    default:
+                        return;
+                }
+                scExpression.setText(formatDisplay(scAccum) + " " + scOp + " " + formatDisplay(scCurrent) + "% =");
+                scResult.setText(formatDisplay(bdToString(r)));
+                scDisplay.setText(formatDisplay(bdToString(r.subtract(a).abs())));
+                scCurrent = bdToString(r);
+                scOp = "";
+                scAccum = "";
+                scStartNewNumber = true;
+                scLastWasEquals = true;
+            }
         };
 
         findViewById(R.id.sc0).setOnClickListener(num);
@@ -745,6 +781,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         scStartNewNumber = true;
         scLastWasEquals = false;
         scExpression.setText("");
+        scResult.setText("");
         updateScDisplay();
     }
 
@@ -754,24 +791,21 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
     private void updateScExpression() {
         scExpression.setText(formatDisplay(scAccum) + " " + scOp);
+        scResult.setText("");
     }
 
-    private double parse(String s) {
-        if (s.isEmpty()) return 0;
+    private java.math.BigDecimal toBd(String s) {
+        if (s == null || s.isEmpty() || s.equals("Erro")) return null;
         try {
-            return Double.parseDouble(s.replace(",", "."));
+            return new java.math.BigDecimal(s.replace(",", "."));
         } catch (NumberFormatException e) {
-            return Double.NaN;
+            return null;
         }
     }
 
-    private String formatNumber(double v) {
-        if (Double.isNaN(v) || Double.isInfinite(v)) return "Erro";
-        if (v == Math.floor(v) && !Double.isInfinite(v)) {
-            long l = (long) v;
-            return String.valueOf(l);
-        }
-        return String.valueOf(v);
+    private String bdToString(java.math.BigDecimal bd) {
+        if (bd == null) return "Erro";
+        return bd.stripTrailingZeros().toPlainString();
     }
 
     private String formatDisplay(String raw) {
@@ -796,23 +830,28 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         String out = (neg ? "-" : "") + intSb.toString();
         if (hasFrac) {
             StringBuilder f = new StringBuilder(fracPart);
-            while (f.length() < 2) f.append('0');
-            if (f.length() > 2) f.setLength(2);
+            if (f.length() == 0) f.append("00");
             out = out + "," + f.toString();
         }
         return out;
     }
 
-    private double compute(String a, String b, String op) {
-        double x = parse(a);
-        double y = parse(b);
+    private String compute(String a, String b, String op) {
+        java.math.BigDecimal x = toBd(a);
+        java.math.BigDecimal y = toBd(b);
+        if (x == null || y == null) return "Erro";
+        java.math.BigDecimal r;
         switch (op) {
-            case "+": return x + y;
-            case "−": return x - y;
-            case "×": return x * y;
-            case "÷": return y == 0 ? Double.NaN : x / y;
-            default: return y;
+            case "+": r = x.add(y); break;
+            case "−": r = x.subtract(y); break;
+            case "×": r = x.multiply(y); break;
+            case "÷":
+                if (y.signum() == 0) return "Erro";
+                r = x.divide(y, 12, java.math.RoundingMode.HALF_UP);
+                break;
+            default: return "Erro";
         }
+        return bdToString(r);
     }
 
     // ==================== NUMPAD ====================

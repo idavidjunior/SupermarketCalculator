@@ -1275,6 +1275,18 @@
                     android:minHeight="20dp" />
 
                 <TextView
+                    android:id="@+id/scResult"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="@color/addBtn"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:gravity="end"
+                    android:minHeight="28dp"
+                    android:maxLines="1" />
+
+                <TextView
                     android:id="@+id/scDisplay"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
