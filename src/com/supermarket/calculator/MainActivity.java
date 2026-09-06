@@ -161,11 +161,11 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private TextView tabSimpleCalc;
     private LinearLayout simpleCalcPage;
     private TextView scDisplay, scExpression, scResult;
-    private String scCurrent = "0";
-    private String scAccum = "";
-    private String scOp = "";
+    private final java.util.ArrayList<String> scTokens = new java.util.ArrayList<>();
+    private String scCurNum = "0";
     private boolean scStartNewNumber = true;
     private boolean scLastWasEquals = false;
+    private String scSolvedExpr = "";
 
     // Saved files cache
     private List<File> savedFiles = new ArrayList<>();
@@ -633,69 +633,78 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         scResult = findViewById(R.id.scResult);
 
         View.OnClickListener num = v -> {
-            if (scStartNewNumber || scLastWasEquals) {
-                if (scLastWasEquals) resetCalc();
-                scCurrent = "";
-                scStartNewNumber = false;
-            }
-            scLastWasEquals = false;
+            if (scLastWasEquals) resetCalc();
             String d = ((Button) v).getText().toString();
-            if (scCurrent.equals("0")) {
-                scCurrent = d.equals("0") ? "0" : d;
+            if (scStartNewNumber) {
+                scCurNum = d;
+                scStartNewNumber = false;
+            } else if (scCurNum.equals("0")) {
+                scCurNum = d.equals("0") ? "0" : d;
             } else {
-                scCurrent = scCurrent + d;
+                scCurNum = scCurNum + d;
             }
-            updateScDisplay();
+            refreshCalcView();
         };
 
         View.OnClickListener dot = v -> {
-            if (scStartNewNumber || scLastWasEquals) {
-                if (scLastWasEquals) resetCalc();
-                scCurrent = "0";
+            if (scLastWasEquals) resetCalc();
+            if (scStartNewNumber) {
+                scCurNum = "0";
                 scStartNewNumber = false;
             }
-            scLastWasEquals = false;
-            if (!scCurrent.contains(".")) {
-                scCurrent = scCurrent + ".";
-                updateScDisplay();
+            if (!scCurNum.contains(".")) {
+                scCurNum = scCurNum + ".";
+                refreshCalcView();
             }
         };
 
         View.OnClickListener op = v -> {
             String o = ((Button) v).getText().toString();
             if (scLastWasEquals) {
-                scOp = o;
-                scAccum = scCurrent;
+                scTokens.clear();
+                scTokens.add(scCurNum);
+                scTokens.add(o);
                 scStartNewNumber = true;
                 scLastWasEquals = false;
-                scDisplay.setText("");
-                updateScExpression();
+                scSolvedExpr = "";
+                refreshCalcView();
                 return;
             }
-            if (!scOp.isEmpty()) {
-                String r = compute(scAccum, scCurrent, scOp);
-                scAccum = r;
-                scCurrent = scAccum;
-                scOp = o;
-                scStartNewNumber = true;
-                updateScDisplay();
-                updateScExpression();
-            } else {
-                scAccum = scCurrent;
-                scOp = o;
-                scStartNewNumber = true;
-                updateScExpression();
+            if (scStartNewNumber) {
+                if (!scTokens.isEmpty()) {
+                    scTokens.set(scTokens.size() - 1, o);
+                    refreshCalcView();
+                }
+                return;
             }
+            scTokens.add(scCurNum);
+            scTokens.add(o);
+            scStartNewNumber = true;
+            refreshCalcView();
         };
 
         View.OnClickListener eq = v -> {
-            if (!scOp.isEmpty()) {
-                String r = compute(scAccum, scCurrent, scOp);
-                scExpression.setText(formatDisplay(scAccum) + " " + scOp + " " + formatDisplay(scCurrent) + " =");
+            if (scLastWasEquals) return;
+            if (scStartNewNumber && !scTokens.isEmpty()) {
+                String r = evalTokens(scTokens);
+                scSolvedExpr = buildExpr(scTokens) + " =";
+                scExpression.setText(scSolvedExpr);
                 scResult.setText(formatDisplay(r));
-                scCurrent = r;
-                scOp = "";
-                scAccum = "";
+                scTokens.clear();
+                scCurNum = (r.equals("Erro")) ? "0" : r;
+                scStartNewNumber = true;
+                scLastWasEquals = true;
+                scDisplay.setText("");
+                return;
+            }
+            if (!scStartNewNumber) {
+                scTokens.add(scCurNum);
+                String r = evalTokens(scTokens);
+                scSolvedExpr = buildExpr(scTokens) + " =";
+                scExpression.setText(scSolvedExpr);
+                scResult.setText(formatDisplay(r));
+                scTokens.clear();
+                scCurNum = (r.equals("Erro")) ? "0" : r;
                 scStartNewNumber = true;
                 scLastWasEquals = true;
                 scDisplay.setText("");
@@ -704,26 +713,34 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
         View.OnClickListener clear = v -> resetCalc();
         View.OnClickListener back = v -> {
-            if (scStartNewNumber && scLastWasEquals) return;
-            if (scCurrent.length() > 0) {
-                scCurrent = scCurrent.substring(0, scCurrent.length() - 1);
-                if (scCurrent.endsWith(".")) scCurrent = scCurrent.substring(0, scCurrent.length() - 1);
-                if (scCurrent.isEmpty() || scCurrent.equals("-")) scCurrent = "0";
-                updateScDisplay();
+            if (scLastWasEquals) return;
+            if (scStartNewNumber && !scTokens.isEmpty()) {
+                String lastOp = scTokens.remove(scTokens.size() - 1);
+                if (lastOp.equals("+") || lastOp.equals("−") || lastOp.equals("×") || lastOp.equals("÷")) {
+                    scCurNum = scTokens.remove(scTokens.size() - 1);
+                }
+                scStartNewNumber = false;
+                refreshCalcView();
+                return;
+            }
+            if (scCurNum.length() > 0) {
+                scCurNum = scCurNum.substring(0, scCurNum.length() - 1);
+                if (scCurNum.equals("-")) scCurNum = "0";
+                if (scCurNum.isEmpty()) scCurNum = "0";
+                refreshCalcView();
             }
         };
         View.OnClickListener percent = v -> {
-            java.math.BigDecimal p = toBd(scCurrent);
+            java.math.BigDecimal p = toBd(scCurNum);
             if (p == null) return;
-            if (scOp.isEmpty()) {
-                scResult.setText("");
-                scCurrent = bdToString(p.divide(java.math.BigDecimal.valueOf(100), 12, java.math.RoundingMode.HALF_UP));
-                updateScDisplay();
-            } else {
-                java.math.BigDecimal a = toBd(scAccum);
+            java.math.BigDecimal a = java.math.BigDecimal.ZERO;
+            String scLastOp = "";
+            java.math.BigDecimal r;
+            if (scTokens.size() >= 2) {
+                scLastOp = scTokens.get(scTokens.size() - 1);
+                a = toBd(scTokens.get(scTokens.size() - 2));
                 if (a == null) return;
-                java.math.BigDecimal r;
-                switch (scOp) {
+                switch (scLastOp) {
                     case "+":
                         r = a.add(a.multiply(p).divide(java.math.BigDecimal.valueOf(100), 12, java.math.RoundingMode.HALF_UP));
                         break;
@@ -734,20 +751,27 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                         r = a.multiply(p).divide(java.math.BigDecimal.valueOf(100), 12, java.math.RoundingMode.HALF_UP);
                         break;
                     case "÷":
-                        if (p.signum() == 0) { scCurrent = "Erro"; updateScDisplay(); return; }
+                        if (p.signum() == 0) { scCurNum = "Erro"; refreshCalcView(); return; }
                         r = a.multiply(java.math.BigDecimal.valueOf(100)).divide(p, 12, java.math.RoundingMode.HALF_UP);
                         break;
                     default:
                         return;
                 }
-                scExpression.setText(formatDisplay(scAccum) + " " + scOp + " " + formatDisplay(scCurrent) + "% =");
+            } else {
+                r = p.divide(java.math.BigDecimal.valueOf(100), 12, java.math.RoundingMode.HALF_UP);
+            }
+            scTokens.clear();
+            scCurNum = bdToString(r);
+            scStartNewNumber = true;
+            scSolvedExpr = "";
+            String aStr = (scLastOp.isEmpty()) ? "" : formatDisplay(bdToString(a));
+            if (scLastOp.isEmpty()) {
+                scExpression.setText(formatDisplay(scCurNum) + "% =");
+                scDisplay.setText(formatDisplay(scCurNum));
+            } else {
+                scExpression.setText(aStr + " " + scLastOp + " " + formatDisplay(bdToString(p)) + "% =");
                 scResult.setText(formatDisplay(bdToString(r)));
                 scDisplay.setText(formatDisplay(bdToString(r.subtract(a).abs())));
-                scCurrent = bdToString(r);
-                scOp = "";
-                scAccum = "";
-                scStartNewNumber = true;
-                scLastWasEquals = true;
             }
         };
 
@@ -775,23 +799,100 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private void resetCalc() {
-        scCurrent = "0";
-        scAccum = "";
-        scOp = "";
+        scTokens.clear();
+        scCurNum = "0";
         scStartNewNumber = true;
         scLastWasEquals = false;
+        scSolvedExpr = "";
         scExpression.setText("");
         scResult.setText("");
         updateScDisplay();
     }
 
     private void updateScDisplay() {
-        scDisplay.setText(formatDisplay(scCurrent));
+        scDisplay.setText(formatDisplay(scCurNum));
     }
 
-    private void updateScExpression() {
-        scExpression.setText(formatDisplay(scAccum) + " " + scOp);
-        scResult.setText("");
+    private void refreshCalcView() {
+        updateScDisplay();
+        String expr = buildExprFull();
+        if (!expr.isEmpty()) {
+            String r = liveEval();
+            scResult.setText(formatDisplay(r));
+            scExpression.setText(expr);
+        } else {
+            scResult.setText("");
+            scExpression.setText("");
+        }
+    }
+
+    private String buildExprFull() {
+        StringBuilder sb = new StringBuilder();
+        for (String t : scTokens) sb.append(formatDisplay(t)).append(" ");
+        if (!scStartNewNumber) sb.append(formatDisplay(scCurNum));
+        return sb.toString().trim();
+    }
+
+    private String buildExpr(java.util.ArrayList<String> tks) {
+        StringBuilder sb = new StringBuilder();
+        for (String t : tks) sb.append(formatDisplay(t)).append(" ");
+        return sb.toString().trim();
+    }
+
+    private String liveEval() {
+        java.util.ArrayList<String> tks = new java.util.ArrayList<>(scTokens);
+        if (!scStartNewNumber) tks.add(scCurNum);
+        return evalTokens(tks);
+    }
+
+    private String evalTokens(java.util.ArrayList<String> tks) {
+        int n = tks.size();
+        if (n == 0) return "0";
+        String first = tks.get(0);
+        boolean expectNum = !(first.equals("+") || first.equals("−") || first.equals("×") || first.equals("÷"));
+        for (String t : tks) {
+            boolean isOp = t.equals("+") || t.equals("−") || t.equals("×") || t.equals("÷");
+            if (expectNum && isOp) return "Erro";
+            if (!expectNum && !isOp) return "Erro";
+            expectNum = !expectNum;
+        }
+        java.util.ArrayList<String> step1 = new java.util.ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            String tk = tks.get(i);
+            if ((tk.equals("×") || tk.equals("÷")) && step1.size() >= 1 && i + 1 < n) {
+                String a = step1.remove(step1.size() - 1);
+                String b = tks.get(i + 1);
+                java.math.BigDecimal x = toBd(a);
+                java.math.BigDecimal y = toBd(b);
+                if (x == null || y == null) return "Erro";
+                if (tk.equals("÷") && y.signum() == 0) return "Erro";
+                java.math.BigDecimal rr = tk.equals("×")
+                        ? x.multiply(y)
+                        : x.divide(y, 12, java.math.RoundingMode.HALF_UP);
+                step1.add(bdToString(rr));
+                i++;
+            } else {
+                step1.add(tk);
+            }
+        }
+        java.util.ArrayList<String> step2 = new java.util.ArrayList<>();
+        int m = step1.size();
+        for (int i = 0; i < m; i++) {
+            String tk = step1.get(i);
+            if ((tk.equals("+") || tk.equals("−")) && step2.size() >= 1 && i + 1 < m) {
+                String a = step2.remove(step2.size() - 1);
+                String b = step1.get(i + 1);
+                java.math.BigDecimal x2 = toBd(a);
+                java.math.BigDecimal y2 = toBd(b);
+                if (x2 == null || y2 == null) return "Erro";
+                java.math.BigDecimal rr2 = tk.equals("+") ? x2.add(y2) : x2.subtract(y2);
+                step2.add(bdToString(rr2));
+                i++;
+            } else {
+                step2.add(tk);
+            }
+        }
+        return step2.isEmpty() ? "0" : step2.get(0);
     }
 
     private java.math.BigDecimal toBd(String s) {
@@ -834,24 +935,6 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             out = out + "," + f.toString();
         }
         return out;
-    }
-
-    private String compute(String a, String b, String op) {
-        java.math.BigDecimal x = toBd(a);
-        java.math.BigDecimal y = toBd(b);
-        if (x == null || y == null) return "Erro";
-        java.math.BigDecimal r;
-        switch (op) {
-            case "+": r = x.add(y); break;
-            case "−": r = x.subtract(y); break;
-            case "×": r = x.multiply(y); break;
-            case "÷":
-                if (y.signum() == 0) return "Erro";
-                r = x.divide(y, 12, java.math.RoundingMode.HALF_UP);
-                break;
-            default: return "Erro";
-        }
-        return bdToString(r);
     }
 
     // ==================== NUMPAD ====================

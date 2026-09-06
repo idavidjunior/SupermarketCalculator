@@ -344,6 +344,14 @@ Write-Host "=== APK ready: $ApkName.apk ===" -ForegroundColor Green
 | `INSTALL_FAILED_NO_MATCHING_ABIS` | install | Native library architecture mismatch | Only relevant if using NDK native libs |
 | `INVALID_SENDER` | install (split) | Split APK mismatch | Only relevant for app bundles |
 
+### Calculator logic error — starting a new op after `=` lost the expression
+
+**Symptom:** In a custom expression calculator, entering `21 =` then `+ 3` showed only `3` instead of `21 + 3 = 24`.
+
+**Root cause:** The operator handler (`op`) had an `if (scLastWasEquals)` branch that built the base tokens (`scTokens.add(scCurNum)`) but did NOT reset `scLastWasEquals`. With the flag still `true`, the next digit's `num` handler (`if (scLastWasEquals) resetCalc()`) wiped everything.
+
+**Fix:** Set `scLastWasEquals = false;` inside the `op` handler's `scLastWasEquals` branch after building the base.
+
 ### ADB Workflow
 
 ```powershell
