@@ -37,6 +37,8 @@ import java.io.FileWriter;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -75,12 +77,10 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private JsonResult readJsonFile(File file) {
-        try {
-            BufferedReader br = new BufferedReader(new FileReader(file));
+        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = br.readLine()) != null) sb.append(line);
-            br.close();
             return new JsonResult(new JSONObject(sb.toString()));
         } catch (Exception e) {
             return new JsonResult("Erro ao ler arquivo: " + e.getMessage());
@@ -88,18 +88,21 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private String writeJsonFileAtomically(File file, JSONObject root) {
-        try {
-            File tmp = new File(file.getParentFile(), file.getName() + ".tmp");
-            FileWriter fw = new FileWriter(tmp);
+        File tmp = new File(file.getParentFile(), file.getName() + ".tmp");
+        try (FileWriter fw = new FileWriter(tmp)) {
             fw.write(root.toString(2));
-            fw.close();
-            if (file.exists()) file.delete();
-            if (!tmp.renameTo(file)) {
-                return "Erro ao renomear arquivo temporário";
-            }
+        } catch (Exception e) {
+            tmp.delete();
+            return "Erro ao salvar arquivo: " + e.getMessage();
+        }
+        try {
+            Files.move(tmp.toPath(), file.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE);
             return null;
         } catch (Exception e) {
-            return "Erro ao salvar arquivo: " + e.getMessage();
+            tmp.delete();
+            return "Erro ao renomear arquivo temporário: " + e.getMessage();
         }
     }
 
@@ -339,6 +342,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        stopBudgetBlink();
         if (soundPool != null) {
             soundPool.release();
             soundPool = null;
@@ -1002,8 +1006,9 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 : priceBuffer.toString();
             if (priceBuffer.indexOf(",") >= 0) {
                 String afterComma = priceBuffer.substring(priceBuffer.indexOf(",") + 1);
-                if (afterComma.length() < 2) {
-                    priceBuffer.append(val);
+                int slots = 2 - afterComma.length();
+                if (slots > 0) {
+                    priceBuffer.append(val.substring(0, Math.min(slots, val.length())));
                 }
             } else if (beforeComma.length() < 8) {
                 priceBuffer.append(val);
@@ -1856,6 +1861,11 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             root.put("unnamedCounter", unnamedCounter);
             root.put("budgetLimit", budgetLimit);
             root.put("currentQty", currentQty);
+            if (editingSession != null && editingSession.isActive()) {
+                root.put("editingFile", editingSession.file.getAbsolutePath());
+                root.put("editingTitle", editingSession.originalTitle);
+                root.put("editingType", editingSession.type);
+            }
             prefs.edit().putString(KEY_CART_STATE, root.toString()).apply();
         } catch (Exception e) {
             Log.e("SuperCalc", "Error saving cart state", e);
@@ -1881,6 +1891,16 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             budgetLimit = root.optDouble("budgetLimit", budgetLimit);
             currentQty = root.optInt("currentQty", currentQty);
             qtyDisplay.setText(String.valueOf(currentQty));
+            if (root.has("editingFile")) {
+                File editingFile = new File(root.getString("editingFile"));
+                if (editingFile.exists()) {
+                    editingSession = new EditingSession(
+                        editingFile,
+                        root.optString("editingTitle"),
+                        root.optString("editingType", "market")
+                    );
+                }
+            }
         } catch (Exception e) {
             Log.e("SuperCalc", "Error loading cart state", e);
         }
@@ -2054,7 +2074,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
                 loadBtn.setOnClickListener(view -> {
                     loadExpensesFromFile(f);
-                    switchTab(2);
+                    switchTab(1);
                 });
                 shareBtn.setOnClickListener(view -> shareSavedFile(f));
                 deleteBtn.setOnClickListener(view -> {
@@ -2258,7 +2278,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             builder.setPositiveButton("Editar", (d, w) -> {
                 if (root.has("expenses")) {
                     loadExpensesFromFile(f);
-                    switchTab(2);
+                    switchTab(1);
                 } else {
                     loadStructuredListIntoCart(f);
                     switchTab(0);
@@ -2319,6 +2339,16 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                     }
                 }
             }
+            for (File existing : expFinanceFiles) {
+                if (!existing.equals(f)) {
+                    String existingTitle = expFinanceTitles.get(existing.getName());
+                    if (existingTitle == null) existingTitle = savedListTitles.get(existing.getName());
+                    if (newTitle.equalsIgnoreCase(existingTitle)) {
+                        Toast.makeText(this, "Já existe uma lista com este título.", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                }
+            }
             updateJsonTitle(f, newTitle);
             // Also offer to rename the physical file
             new AlertDialog.Builder(this)
@@ -2337,10 +2367,14 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private void renamePhysicalFile(File f, String newTitle) {
         String sanitized = newTitle.replaceAll("[^\\p{L}\\p{N}_-]", "_");
         File dir = f.getParentFile();
+        String origName = f.getName();
+        String prefix = "";
+        if (origName.startsWith("lista_compras_")) prefix = "lista_compras_";
+        else if (origName.startsWith("modelo_")) prefix = "modelo_";
         String extension = "";
-        int dot = f.getName().lastIndexOf('.');
-        if (dot > 0) extension = f.getName().substring(dot);
-        File newFile = new File(dir, sanitized + extension);
+        int dot = origName.lastIndexOf('.');
+        if (dot > 0) extension = origName.substring(dot);
+        File newFile = new File(dir, prefix + sanitized + extension);
         if (newFile.exists()) {
             Toast.makeText(this, "Arquivo com este nome já existe.", Toast.LENGTH_SHORT).show();
             return;
@@ -3159,7 +3193,6 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private void loadCustomCategories() {
-        SharedPreferences prefs = getSharedPreferences("supermarket_prefs", MODE_PRIVATE);
         String json = prefs.getString("custom_categories", "[]");
         try {
             JSONArray arr = new JSONArray(json);
@@ -3173,7 +3206,6 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     }
 
     private void saveCustomCategories() {
-        SharedPreferences prefs = getSharedPreferences("supermarket_prefs", MODE_PRIVATE);
         JSONArray arr = new JSONArray();
         for (String cat : customCategories) {
             arr.put(cat);
@@ -3369,7 +3401,10 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         // Delete saved files
         File dir = getListasDir();
         if (dir.exists()) {
-            for (File f : dir.listFiles()) f.delete();
+            File[] files = dir.listFiles();
+            if (files != null) {
+                for (File f : files) f.delete();
+            }
         }
 
         // Clear in-memory state
