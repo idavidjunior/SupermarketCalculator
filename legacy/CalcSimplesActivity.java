@@ -42,24 +42,45 @@ public class CalcSimplesActivity extends AppCompatActivity implements View.OnCli
             case R.id.btn4: case R.id.btn5: case R.id.btn6: case R.id.btn7:
             case R.id.btn8: case R.id.btn9:
                 display.setText(texto + ((Button) v).getText());
+                if (!operador.isEmpty()) {
+                    operando2 = display.getText().toString();
+                } else {
+                    operando1 = display.getText().toString();
+                }
                 break;
             case R.id.btnDot:
                 if (!texto.contains(".")) display.setText(texto + ".");
+                if (!operador.isEmpty()) operando2 = display.getText().toString();
+                else operando1 = display.getText().toString();
                 break;
             case R.id.btnClear:
                 display.setText("");
                 operando1 = operador = operando2 = "";
                 break;
             case R.id.btnNeg:
-                if (!texto.isEmpty()) display.setText("-" + texto);
+                if (!texto.isEmpty()) {
+                    display.setText(texto.startsWith("-") ? texto.substring(1) : "-" + texto);
+                    if (!operador.isEmpty()) operando2 = display.getText().toString();
+                    else operando1 = display.getText().toString();
+                }
                 break;
             case R.id.btnPercent:
-                display.setText("" + (Double.parseDouble(texto) / 100));
+                if (texto.isEmpty()) break;
+                try {
+                    double value = Double.parseDouble(texto.replace(",", "."));
+                    if (Double.isFinite(value)) {
+                        display.setText(String.format(java.util.Locale.US, "%.10f", value / 100).replace(",", "."));
+                        if (!operador.isEmpty()) operando2 = display.getText().toString();
+                        else operando1 = display.getText().toString();
+                    }
+                } catch (NumberFormatException ignored) {}
                 break;
             case R.id.btnDiv: case R.id.btnMul: case R.id.btnMinus: case R.id.btnPlus:
-                if (!texto.isEmpty() && !operador.isEmpty()) calcular();
-                operando1 = texto;
+                if (!operando1.isEmpty() && !operador.isEmpty() && !operando2.isEmpty()) calcular();
+                else if (!texto.isEmpty()) operando1 = texto;
                 operador = ((Button) v).getText().toString();
+                operando2 = "";
+                if (!operando1.isEmpty()) display.setText("");
                 break;
             case R.id.btnEquals:
                 if (!operador.isEmpty()) calcular();
@@ -73,9 +94,16 @@ public class CalcSimplesActivity extends AppCompatActivity implements View.OnCli
             double b = Double.parseDouble(operando2);
             double r;
             switch (operador) {
-                case "÷": r = a / b; break;
+                case "÷":
+                    if (b == 0) {
+                        display.setText("Erro: divisão por zero");
+                        operando1 = operando2 = operador = "";
+                        return;
+                    }
+                    r = a / b;
+                    break;
                 case "×": r = a * b; break;
-                case "‑": r = a - b; break;
+                case "‑": case "−": r = a - b; break;
                 case "+": r = a + b; break;
                 default: return;
             }

@@ -39,6 +39,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -54,6 +56,21 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity implements CartAdapter.CartListener {
+    private static final int MAX_QUANTITY = 999;
+    private static final double MAX_MONEY = 1_000_000_000.0;
+
+    private static boolean isValidMoney(double value) {
+        return Double.isFinite(value) && value >= 0 && value <= MAX_MONEY;
+    }
+
+    private static int clampQuantity(int value) {
+        return Math.min(MAX_QUANTITY, Math.max(1, value));
+    }
+
+    private static double roundMoney(double value) {
+        if (!isValidMoney(value)) return 0;
+        return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
 
     // ==================== JSON HELPERS ====================
 
@@ -101,8 +118,13 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                 StandardCopyOption.ATOMIC_MOVE);
             return null;
         } catch (Exception e) {
-            tmp.delete();
-            return "Erro ao renomear arquivo temporário: " + e.getMessage();
+            try {
+                Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                return null;
+            } catch (Exception fallback) {
+                tmp.delete();
+                return "Erro ao renomear arquivo temporário: " + fallback.getMessage();
+            }
         }
     }
 
@@ -168,6 +190,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private String scCurNum = "0";
     private boolean scStartNewNumber = true;
     private boolean scLastWasEquals = false;
+    private boolean scFreshEntry = false;
     private String scSolvedExpr = "";
 
     // Saved files cache
@@ -399,6 +422,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         financeBudgetLimitDisplay = findViewById(R.id.financeBudgetLimitDisplay);
         financeBudgetRemaining = findViewById(R.id.financeBudgetRemaining);
         financeBudgetLimit = prefs.getFloat("finance_budget_limit", 0f);
+        if (!isValidMoney(financeBudgetLimit)) financeBudgetLimit = 0;
         findViewById(R.id.financeBudgetRow).setOnClickListener(v -> showFinanceBudgetDialog());
 
         expTabMarket = findViewById(R.id.expTabMarket);
@@ -637,8 +661,15 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         scResult = findViewById(R.id.scResult);
 
         View.OnClickListener num = v -> {
-            if (scLastWasEquals) resetCalc();
             String d = ((Button) v).getText().toString();
+            if (scLastWasEquals) {
+                scFreshEntry = true;
+                scLastWasEquals = false;
+                scCurNum = d;
+                scStartNewNumber = false;
+                refreshCalcView();
+                return;
+            }
             if (scStartNewNumber) {
                 scCurNum = d;
                 scStartNewNumber = false;
@@ -651,7 +682,12 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         };
 
         View.OnClickListener dot = v -> {
-            if (scLastWasEquals) resetCalc();
+            if (scLastWasEquals) {
+                scFreshEntry = true;
+                scLastWasEquals = false;
+                scCurNum = "0";
+                scStartNewNumber = false;
+            }
             if (scStartNewNumber) {
                 scCurNum = "0";
                 scStartNewNumber = false;
@@ -664,6 +700,10 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
         View.OnClickListener op = v -> {
             String o = ((Button) v).getText().toString();
+            if (scFreshEntry) {
+                scFreshEntry = false;
+                scTokens.clear();
+            }
             if (scLastWasEquals) {
                 scTokens.clear();
                 scTokens.add(scCurNum);
@@ -688,7 +728,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         };
 
         View.OnClickListener eq = v -> {
-            if (scLastWasEquals) return;
+            if (scLastWasEquals && !scFreshEntry) return;
+            scFreshEntry = false;
             if (scStartNewNumber && !scTokens.isEmpty()) {
                 String r = evalTokens(scTokens);
                 scSolvedExpr = buildExpr(scTokens) + " =";
@@ -767,6 +808,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             scTokens.clear();
             scCurNum = bdToString(r);
             scStartNewNumber = true;
+            scLastWasEquals = false;
+            scFreshEntry = false;
             scSolvedExpr = "";
             String aStr = (scLastOp.isEmpty()) ? "" : formatDisplay(bdToString(a));
             if (scLastOp.isEmpty()) {
@@ -807,6 +850,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         scCurNum = "0";
         scStartNewNumber = true;
         scLastWasEquals = false;
+        scFreshEntry = false;
         scSolvedExpr = "";
         scExpression.setText("");
         scResult.setText("");
@@ -819,6 +863,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
 
     private void refreshCalcView() {
         updateScDisplay();
+        if (scFreshEntry) return;
         String expr = buildExprFull();
         if (!expr.isEmpty()) {
             String r = liveEval();
@@ -1032,6 +1077,10 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private void handleEquals() {
         if (pendingOp == null) return;
         double current = getPriceFromDisplay();
+        if ("÷".equals(pendingOp) && current == 0) {
+            Toast.makeText(this, "Não é possível dividir por zero.", Toast.LENGTH_SHORT).show();
+            return;
+        }
         operand1 = evaluate(operand1, current, pendingOp);
         pendingOp = null;
         priceBuffer.setLength(0);
@@ -1044,7 +1093,9 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             case "+": return a + b;
             case "−": return a - b;
             case "×": return a * b;
-            case "÷": return (b != 0) ? a / b : 0;
+            case "÷":
+                if (b == 0) return a;
+                return a / b;
             default: return b;
         }
     }
@@ -1062,7 +1113,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         }
         try {
             double value = Double.parseDouble(priceBuffer.toString().replace(",", "."));
-            priceDisplay.setText(currencyFormat.format(value));
+            priceDisplay.setText(currencyFormat.format(isValidMoney(value) ? roundMoney(value) : 0));
             priceDisplay.setTextColor(getColorForCurrentTheme(true));
         } catch (NumberFormatException e) {
             priceDisplay.setText("R$ 0,00");
@@ -1073,7 +1124,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
     private double getPriceFromDisplay() {
         if (priceBuffer.length() == 0) return 0;
         try {
-            return Double.parseDouble(priceBuffer.toString().replace(",", "."));
+            double value = Double.parseDouble(priceBuffer.toString().replace(",", "."));
+            return isValidMoney(value) ? roundMoney(value) : 0;
         } catch (NumberFormatException e) {
             return 0;
         }
@@ -1120,7 +1172,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         for (int i = 0; i < items.size(); i++) {
             if (items.get(i).getName().equalsIgnoreCase(newItem.getName())) {
                 CartItem existing = items.remove(i);
-                existing.setQuantity(existing.getQuantity() + newItem.getQuantity());
+                int combined = existing.getQuantity() + newItem.getQuantity();
+                existing.setQuantity(clampQuantity(combined));
                 items.add(0, existing);
                 return;
             }
@@ -1422,7 +1475,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             String val = input.getText().toString().trim().replace(",", ".");
             try {
                 budgetLimit = Double.parseDouble(val);
-                if (budgetLimit < 0) budgetLimit = 0;
+                if (!isValidMoney(budgetLimit)) throw new NumberFormatException();
+                budgetLimit = roundMoney(budgetLimit);
                 budgetWarned = false;
                 budgetExceededWarned = false;
             } catch (NumberFormatException e) {
@@ -1463,7 +1517,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             String val = input.getText().toString().trim().replace(",", ".");
             try {
                 financeBudgetLimit = Double.parseDouble(val);
-                if (financeBudgetLimit < 0) financeBudgetLimit = 0;
+                if (!isValidMoney(financeBudgetLimit)) throw new NumberFormatException();
+                financeBudgetLimit = roundMoney(financeBudgetLimit);
                 prefs.edit().putFloat("finance_budget_limit", (float) financeBudgetLimit).apply();
             } catch (NumberFormatException e) {
                 Toast.makeText(this, "Valor inválido.", Toast.LENGTH_SHORT).show();
@@ -1724,7 +1779,7 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             for (CartItem item : items) {
                 JSONObject obj = new JSONObject();
                 obj.put("name", item.getName());
-                obj.put("unitPrice", item.getUnitPrice());
+                obj.put("unitPrice", roundMoney(item.getUnitPrice()));
                 obj.put("quantity", item.getQuantity());
                 obj.put("total", item.getTotal());
                 itemsArr.put(obj);
@@ -1880,16 +1935,21 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             JSONArray itemsArr = root.getJSONArray("items");
             for (int i = 0; i < itemsArr.length(); i++) {
                 JSONObject obj = itemsArr.getJSONObject(i);
+                String name = obj.optString("name", "").trim();
+                double unitPrice = obj.optDouble("unitPrice", 0);
+                int quantity = obj.optInt("quantity", 1);
+                if (name.isEmpty() || !isValidMoney(unitPrice)) continue;
                 CartItem citem = new CartItem(
-                    obj.getString("name"),
-                    obj.getDouble("unitPrice"),
-                    obj.getInt("quantity")
+                    name,
+                    roundMoney(unitPrice),
+                    clampQuantity(quantity)
                 );
                 items.add(citem);
             }
             unnamedCounter = root.optInt("unnamedCounter", unnamedCounter);
-            budgetLimit = root.optDouble("budgetLimit", budgetLimit);
-            currentQty = root.optInt("currentQty", currentQty);
+            double savedBudget = root.optDouble("budgetLimit", budgetLimit);
+            budgetLimit = isValidMoney(savedBudget) ? roundMoney(savedBudget) : 0;
+            currentQty = clampQuantity(root.optInt("currentQty", currentQty));
             qtyDisplay.setText(String.valueOf(currentQty));
             if (root.has("editingFile")) {
                 File editingFile = new File(root.getString("editingFile"));
@@ -1926,7 +1986,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             String name = obj.optString("name", "");
             double price = obj.optDouble("unitPrice", 0);
             int qty = obj.optInt("quantity", 1);
-            CartItem citem = new CartItem(name, price, qty);
+            if (name.trim().isEmpty() || !isValidMoney(price)) continue;
+            CartItem citem = new CartItem(name.trim(), roundMoney(price), clampQuantity(qty));
             mergeOrAddAtTop(citem);
         }
 
@@ -2159,7 +2220,9 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             JSONArray expenses = root.getJSONArray("expenses");
             double total = 0;
             for (int i = 0; i < expenses.length(); i++) {
-                total += expenses.getJSONObject(i).getDouble("amount");
+                double amount = expenses.getJSONObject(i).optDouble("amount", 0);
+                if (!isValidMoney(amount)) continue;
+                total += roundMoney(amount);
             }
             return total;
         } catch (Exception e) {
@@ -2449,9 +2512,12 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
             .setTitle("Excluir lista")
             .setMessage("Tem certeza que deseja excluir \"" + f.getName() + "\"?")
             .setPositiveButton("Sim", (d, w) -> {
-                f.delete();
-                refreshSavedLists();
-                refreshExpensesMarket();
+                if (f.delete()) {
+                    refreshSavedLists();
+                    refreshExpensesMarket();
+                } else {
+                    Toast.makeText(this, "Não foi possível excluir o arquivo.", Toast.LENGTH_SHORT).show();
+                }
             })
             .setNegativeButton("Cancelar", null)
             .show();
@@ -2641,11 +2707,13 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
                             String amtStr = input.getText().toString().trim().replace(",", ".");
                             try {
                                 double amt = Double.parseDouble(amtStr);
-                                if (amt >= 0) {
-                                    expenseItems.get(pos).amount = amt;
+                                if (isValidMoney(amt)) {
+                                    expenseItems.get(pos).amount = roundMoney(amt);
                                     expenseAdapter.notifyDataSetChanged();
                                     refreshExpenseTotal();
                                     saveExpensesToFile();
+                                } else {
+                                    Toast.makeText(MainActivity.this, R.string.exp_invalid, Toast.LENGTH_SHORT).show();
                                 }
                             } catch (NumberFormatException ignored) {}
                         })
@@ -2722,7 +2790,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         double amt;
         try {
             amt = Double.parseDouble(amtStr);
-            if (amt < 0) throw new NumberFormatException();
+            if (!isValidMoney(amt)) throw new NumberFormatException();
+            amt = roundMoney(amt);
         } catch (NumberFormatException e) {
             Toast.makeText(this, R.string.exp_invalid, Toast.LENGTH_SHORT).show();
             return;
@@ -2753,7 +2822,8 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         double amt;
         try {
             amt = Double.parseDouble(amtStr);
-            if (amt < 0) throw new NumberFormatException();
+            if (!isValidMoney(amt)) throw new NumberFormatException();
+            amt = roundMoney(amt);
         } catch (NumberFormatException e) {
             Toast.makeText(this, R.string.exp_invalid, Toast.LENGTH_SHORT).show();
             return;
@@ -3264,9 +3334,11 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         for (int i = 0; i < arr.length(); i++) {
             JSONObject obj = arr.optJSONObject(i);
             if (obj == null) continue;
+            double amount = obj.optDouble("amount", 0);
+            if (!isValidMoney(amount)) continue;
             ExpenseItem e = new ExpenseItem(
                 obj.optString("description", ""),
-                obj.optDouble("amount", 0),
+                roundMoney(amount),
                 obj.optString("category", "")
             );
             e.date = obj.optLong("date", System.currentTimeMillis());
@@ -3403,7 +3475,16 @@ public class MainActivity extends Activity implements CartAdapter.CartListener {
         if (dir.exists()) {
             File[] files = dir.listFiles();
             if (files != null) {
-                for (File f : files) f.delete();
+                boolean failed = false;
+                for (File f : files) {
+                    if (!f.delete()) {
+                        Log.e("SuperCalc", "Falha ao excluir arquivo durante reset: " + f.getAbsolutePath());
+                        failed = true;
+                    }
+                }
+                if (failed) {
+                    Toast.makeText(this, "Alguns arquivos não puderam ser excluídos.", Toast.LENGTH_LONG).show();
+                }
             }
         }
 

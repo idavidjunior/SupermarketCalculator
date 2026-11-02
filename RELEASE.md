@@ -37,6 +37,8 @@ Histórico de versões:
 | 1.5.7 | 13 | 2026-08-08 | Fix 5 bugs MainActivity + opções "Salvar como novo"/"Atualizar" ao editar lista |
 | 1.5.8 | 14 | 2026-09-03 | Nova 5ª aba "Simples": calculadora comum (+, −, ×, ÷, %, vírgula, limpar, apagar) |
 | 1.5.9 | 15 | 2026-09-03 | Aba Simples: visor com formatação brasileira automática (1.000, 10,50) mantendo cálculo correto |
+| 1.5.10 | 16 | 2026-11-02 | Remoção do reset ao digitar número depois do "=" na aba Simples |
+| 1.5.11 | 17 | 2026-11-02 | Fix do botão "=" morto após digitar número: nova entrada preserva o resultado anterior e o "=" volta a calcular |
 
 ## Assinatura (release keystore)
 
@@ -44,10 +46,27 @@ Histórico de versões:
 poderá ser instalada por cima da v1.3.0 (o Android exige a MESMA assinatura; trocar = desinstalar = perda de dados).
 
 - **Arquivo:** `release.keystore` (na raiz do projeto)
+- **Backup dentro do ecossistema:** `backups/keystores/supermarketcalculator/release.keystore`
+  (a pasta `backups/` é ignorada pelo git; o arquivo sumiu do disco em 2026-11-02 e teve de ser recriado)
 - **Alias:** `supermarket`
 - **StorePass / KeyPass:** `opencode`
 - **DN:** `CN=Supermarket Calculator, OU=UmGrau, O=EcoSystemUmGrau, L=Belem, ST=Para, C=BR`
-- **Fingerprint SHA-256:** `20b1693cd2ccdbe62294e83bb990599e77762618a774842850f0e73e29026562`
+- **Fingerprint SHA-256 ATUAL:** `ce2ae9dfe580df6519f7c2afdd96676a57591b62fd9f851d2c56f1e4bc3510c9`
+
+### Troca de chave em 2026-11-02 (v1.5.11)
+- A keystore original **se perdeu** (não estava no disco nem no histórico do git — sempre foi ignorada pelo git).
+- O arquivo foi recriado com o mesmo alias, senha e DN, mas com um **par de chaves novo**.
+- Fingerprint antigo (perdido, ainda vale para os APKs já publicados v1.2 até v1.5.9):
+  `20b1693cd2ccdbe62294e83bb990599e77762618a774842850f0e73e29026562`
+- Consequência: APK assinado com a chave nova **não atualiza por cima** dos APKs publicados com a chave antiga
+  (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). Quem tiver a v1.5.9 instalada terá de desinstalar (perde os dados).
+- **Migração feita sem perder dados** no aparelho do usuário: os 70 itens customizados foram extraídos,
+  restaurados e conferidos. Detalhes em
+  `conhecimento/aprendizados/2026-11-02-migracao-assinatura-dados-supermarketcalculator.md`.
+- **Estado atual do aparelho:** app instalado em release, fingerprint novo
+  `ce2ae9dfe580df6519f7c2afdd96676a57591b62fd9f851d2c56f1e4bc3510c9`, versionCode 17, `android:debuggable="false"`.
+- Da v1.5.11 em diante, **todas** as atualizações usam `adb install -r` com esta keystore: os dados do
+  usuário são preservados e nada mais precisa desinstalar.
 
 Verificar assinatura:
 ```powershell
@@ -67,14 +86,31 @@ $ADB = "$env:ANDROID_HOME\platform-tools\adb.exe"
 & $ADB logcat -s SuperCalc 2>&1     # checar erros
 ```
 
-**Troca de assinatura só ocorre UMA vez** (aconteceu na v1.3.0 ao migrar de debug p/ release):
-`adb uninstall com.supermarket.calculator` + `adb install <apk>`. **Isso apaga dados locais.**
-Da v1.3.0 em diante, use SEMPRE `adb install -r` (mesma assinatura → preserva dados).
+**Troca de assinatura já foi resolvida** (2026-11-02, v1.5.11): o aparelho do usuário foi migrado
+para a chave nova **sem perder dados**, e a migração foi validada na tela. Da v1.5.11 em diante use
+SEMPRE `adb install -r` (mesma assinatura → preserva dados). Se a keystore for perdida de novo, o
+procedimento de migração preservando dados está em
+`conhecimento/aprendizados/2026-11-02-migracao-assinatura-dados-supermarketcalculator.md`.
+
+### Build de release (precisa das variáveis de ambiente)
+
+O `build.ps1 -Release` aborta sem `RELEASE_STOREPASS`, `RELEASE_KEYPASS` e `RELEASE_KEYALIAS`.
+Defina-as **na sessão** (não grave no perfil do Windows) e rode o build:
+
+```powershell
+$env:RELEASE_STOREPASS='opencode'; $env:RELEASE_KEYPASS='opencode'; $env:RELEASE_KEYALIAS='supermarket'
+.\build.ps1 -Release -OutputName "SupermarketCalculator-v1.5.11"
+Copy-Item "SupermarketCalculator-v1.5.11-release.apk" "releases\SupermarketCalculator-v1.5.11.apk"
+```
 
 Erros comuns:
 - `INSTALL_FAILED_UPDATE_INCOMPATIBLE` → assinatura diferente → desinstalar+reinstalar (perde dados).
 - `INSTALL_FAILED_USER_RESTRICTED` → usar `adb install -r -t`.
 - `INSTALL_FAILED_INVALID_APK: code is missing` → DEX não está na raiz do APK (build.ps1 cuida).
+- `Release build requires RELEASE_STOREPASS...` → variáveis de ambiente não definidas (ver acima).
+- `FileNotFoundException: ...release.keystore` → keystore sumiu do projeto → restaurar do backup
+  em `C:\Users\David Jr\.config\supermarket-calculator\release.keystore` (nunca regere sem necessidade:
+  o par de chaves novo quebra a atualização por cima das versões já instaladas).
 
 ## Persistência do carrinho (fix v1.3.0)
 
@@ -94,6 +130,16 @@ Erros comuns:
 - Para trocar de som: basta substituir/renomear os WAVs em `res/raw/` (o aapt empacota `.wav` em `res/raw/`
   sem configuração extra) e manter os nomes `som_caixa/som_pop/som_bip`.
 
+## Calculadora Simples — regra do botão "=" (fix v1.5.11)
+
+- O visor tem 3 campos: `scExpression` (linha da expressão), `scResult` (resultado anterior) e `scDisplay` (número em edição).
+- Após apertar "=", o resultado fica visível em `scExpression`/`scResult` e `scDisplay` fica vazio.
+- Ao digitar um número depois do "=", o app entra em **entrada nova** (`scFreshEntry = true`):
+  o número vai para `scDisplay` e o resultado anterior **permanece visível** (não é resetado).
+- Nesse estado o botão "=" continua funcionando: confirma o número novo (`7 =`).
+- Apertar um operador durante a entrada nova descarta o resultado anterior e inicia a conta com o número digitado.
+- Antes do fix (v1.5.10), `scLastWasEquals` continuava `true` ao digitar número → o "=" retornava sem fazer nada (botão morto).
+
 ## Local do APK publicado
 
 - `releases/SupermarketCalculator-vX.Y.Z.apk` (copiar de `SupermarketCalculator-vX.Y.Z-release.apk`).
@@ -101,4 +147,7 @@ Erros comuns:
 ## Aprendizados do ecossistema
 
 - `conhecimento/aprendizados/2026-08-08-persistencia-carrinho-supermarketcalculator.md`
+- `conhecimento/aprendizados/2026-11-02-bug-fix-equals-button-supermarketcalculator.md`
+- `conhecimento/aprendizados/2026-11-02-keystore-release-supermarketcalculator.md`
+- `conhecimento/aprendizados/2026-11-02-migracao-assinatura-dados-supermarketcalculator.md`
 - Skill `android-pure-sdk` (`.opencode/skills/android-pure-sdk/SKILL.md`) — build resiliente + padrão de persistência.

@@ -336,7 +336,10 @@ Write-Host "=== APK ready: $ApkName.apk ===" -ForegroundColor Green
 | `INSTALL_FAILED_INVALID_APK: code is missing` | install | DEX not at APK root | `aapt add` uses the arg path as archive name; run `aapt add` with cwd = dex dir so it adds `classes.dex` (see Add DEX step) |
 | `error: invalid flag: C:\Users...` | javac | Project path contains spaces | Use a javac response file (`@sources.txt`) with RELATIVE paths (no spaces), written with UTF8Encoding($false) |
 | `error: file not found: C:UsersDavid...` | javac | Backslashes mangled in response file | Argfile entries must be relative paths, not absolute quoted paths |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | install | APK signed with different key | Same app must be signed with same keystore always — uninstall+reinstall loses data |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | install | APK signed with different key | Same app must be signed with same keystore always — to migrate keys without losing data, see "Migração de assinatura preservando dados" below |
+| `run-as: package not debuggable` | run-as | App built with `android:debuggable="false"` | `run-as` only reaches `/data/data/<pkg>` for debuggable builds — build a temporary debuggable APK to back up or restore app data |
+| `tar: can't mkdir: Read-only file system` | run-as restore | `adb shell run-as ... sh -c "cd X && tar -xf Y"` gets re-quoted by the remote shell, so `cd` never runs and tar extracts into `/` | Drop `sh -c`: `run-as` already starts in the app data dir, so `adb shell run-as <pkg> tar -xf /data/local/tmp/data.tar` is enough |
+| Backup file unreadable by tar | adb exec-out | PowerShell `>` decodes native output as text and corrupts binaries | Use `cmd /c "adb exec-out ... > file.tar"` for byte-exact redirection |
 | `INSTALL_FAILED_USER_RESTRICTED` | install | Install blocked/needs confirmation | `adb install -r -t` usually succeeds |
 | `Failure [INSTALL_FAILED_OLDER_SDK]` | install | targetSdkVersion < device OS | Update targetSdkVersion or use older device |
 | No main activity found | install | Missing intent-filter in manifest | Add `<action android:name="android.intent.action.MAIN" />` |
@@ -351,6 +354,53 @@ Write-Host "=== APK ready: $ApkName.apk ===" -ForegroundColor Green
 **Root cause:** The operator handler (`op`) had an `if (scLastWasEquals)` branch that built the base tokens (`scTokens.add(scCurNum)`) but did NOT reset `scLastWasEquals`. With the flag still `true`, the next digit's `num` handler (`if (scLastWasEquals) resetCalc()`) wiped everything.
 
 **Fix:** Set `scLastWasEquals = false;` inside the `op` handler's `scLastWasEquals` branch after building the base.
+
+### Calculadora — entrada nova depois do `=` (padrão de estado)
+
+**Symptom (v1.5.11):** after `2 + 3 =` the result was correct, but pressing `=` again did nothing and typing a new number replaced the expression instead of starting a new entry.
+
+**Root cause:** the "fresh entry" state was implicit. A single boolean (`scLastWasEquals`) had to express two different things: "the last key was `=`" and "the next digit starts a new calculation". After `=`, the flag stayed `true`, so the next digit was treated as a continuation of a finished expression.
+
+**Fix:** use an explicit state flag `scFreshEntry` that only means "the next digit starts a new entry". Set it to `true` in `eq`, `resetCalc` and `percent`; set it to `false` in `num`, `dot` and `op`. `refreshCalcView` uses it to decide whether the expression row still shows the previous calculation (keep it visible, so the user can see what was added).
+
+**Rule:** never overload one flag for two meanings. One flag, one meaning — that is what made the bug invisible in the previous fix.
+
+### Migração de assinatura preservando dados (troca de release key)
+
+**Problem:** the release keystore was lost, so every future release would use a new key and `adb install -r` would fail with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` over the already published APKs.
+
+**Safe procedure (keeps app data):**
+
+1. Back up the app data from the device with a temporary debuggable build:
+   - set `android:debuggable="true"` in the manifest, build, `adb install -r` (same signature as the installed build);
+   - `cmd /c "adb exec-out run-as <pkg> tar -cf - -C /data/data/<pkg> shared_prefs > data.tar"` (byte-exact redirection);
+   - verify the archive by extracting it on the PC and comparing the SHA-256 of `shared_prefs/*.xml`.
+2. Uninstall the app (this is the only destructive step — the data is already on the PC).
+3. Build the release APK with the NEW key and `android:debuggable="true"`, install it, and restore:
+   - `adb push data.tar /data/local/tmp/`, then `adb shell run-as <pkg> tar -xf /data/local/tmp/data.tar` (no `sh -c`, no `cd`);
+   - `run-as` starts in the app data dir by default.
+4. Set `android:debuggable="false"` again, rebuild the release with the same new key, and `adb install -r` it over the previous build: same signature means the data survives the upgrade.
+5. Verify the restored data in the UI (open the screen that shows it) and confirm the APK is not debuggable anymore (`aapt dump badging` shows no `debuggable`).
+
+**Why the order matters:** the final APK must be signed with the same key as the one that will receive future updates, and must not be debuggable. The debuggable build is only a transport for the data.
+
+### Keystore de release — recriação e backup
+
+- The keystore is in `.gitignore`, so it is **never** in the git history: losing it means the old fingerprint is gone forever and no release signed with the old key can be reproduced.
+- Keep two copies inside the project workspace (one for the build, one as backup) and write the SHA-256 fingerprint in the release notes.
+- Regenerate with the same identity so the DN stays stable:
+  `keytool -genkeypair -v -keystore release.keystore -alias <alias> -keyalg RSA -keysize 2048 -validity 10000 -storepass <pass> -keypass <pass> -dname "CN=..., OU=..., O=..., L=..., ST=..., C=BR"`
+- After generating: verify the fingerprint with `apksigner verify --print-certs`, sign the release APK, and confirm the APK certificate matches the keystore.
+- A key rotation is a breaking change for users: document that the APK signed with the new key cannot update the old one and that reinstalling loses app data.
+
+### Verificação de UI por dump (sem screenshot)
+
+`adb shell uiautomator dump /sdcard/ui.xml` + `adb pull` is faster and more precise than a screenshot for checking text and ids.
+
+- In the dump XML, `text` comes **before** `resource-id`; split nodes on `<node ` instead of assuming attribute order.
+- Tap by resource-id: find the node with `resource-id="<pkg>:id/<name>"`, parse its `bounds="[x1,y1][x2,y2]"`, tap the centre.
+- The soft keyboard shifts the layout: close it (`input keyevent 4`) before reading coordinates, otherwise the tap lands on the keyboard.
+- Use it to assert real state (item count, totals, expression row) instead of trusting a screenshot that may be stale.
 
 ### ADB Workflow
 
